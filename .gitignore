@@ -1,3 +1,29 @@
-Video/2026-06-12_17-48-40.mkv
-Video/2026-06-12_17-48-40.mkv0001-40666.mp4
-Video/2026-06-12_18-31-39.mkv
+# OS-Specific Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Project Build & Temporary Folders
+bin/
+obj/
+temp/
+out/
+build/
+*.pyc
+
+# Heavy Video and Media Caches
+# (Remove the '!' if you want to explicitly commit these extensions)
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.flv
+*.wav
+*.mp3
+
+# Editor & IDE Specific
+.vscode/
+.idea/
+*.swp
+*.swo
