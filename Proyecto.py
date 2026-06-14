@@ -111,6 +111,62 @@ class VentanaLogin:
         self.on_exito(usuario)
 
 
+FACCIONES = {
+    "Medieval":   {"color": "#8B4513", "descripcion": "La vieja confiable"},
+    "Futurista":  {"color": "#00BFFF", "descripcion": "2027"},
+    "Naturaleza": {"color": "#228B22", "descripcion": "Poder de la naturaleza"},
+}
+
+
+class VentanaFacciones:
+    """
+    Ventana para que el jugador elija su faccion antes de iniciar la partida.
+    Llama a on_exito(faccion_elegida) al confirmar.
+    """
+    def __init__(self, parent, jugador, on_exito):
+        self.ventana = tk.Toplevel(parent)
+        self.ventana.title("Seleccion de Faccion")
+        self.ventana.resizable(False, False)
+        self.ventana.grab_set()
+        self.on_exito = on_exito
+
+        tk.Label(self.ventana, text=f"Jugador: {jugador}",
+                 font=("Arial", 12, "bold")).pack(pady=(12, 4))
+        tk.Label(self.ventana, text="Elige tu faccion:",
+                 font=("Arial", 11)).pack(pady=(0, 8))
+
+        self.seleccion = tk.StringVar(value="")
+
+        # Frame con las opciones de faccion
+        frame_opciones = tk.Frame(self.ventana)
+        frame_opciones.pack(padx=20, pady=4)
+
+        for nombre, datos in FACCIONES.items():
+            fila = tk.Frame(frame_opciones, bd=1, relief="groove", padx=8, pady=6)
+            fila.pack(fill="x", pady=3)
+
+            rb = tk.Radiobutton(fila, text=nombre, variable=self.seleccion,
+                                value=nombre, font=("Arial", 10, "bold"),
+                                fg=datos["color"])
+            rb.pack(side="left")
+
+            tk.Label(fila, text=datos["descripcion"],
+                     font=("Arial", 9), fg="#555555").pack(side="left", padx=(8, 0))
+
+        self.label_error = tk.Label(self.ventana, text="", fg="red")
+        self.label_error.pack()
+
+        tk.Button(self.ventana, text="Confirmar faccion", width=18,
+                  command=self.confirmar).pack(pady=10)
+
+    def confirmar(self):
+        if not self.seleccion.get():
+            self.label_error.config(text="Debes seleccionar una faccion.")
+            return
+        self.ventana.destroy()
+        self.on_exito(self.seleccion.get())
+
+
 class Interfaz:
     def __init__(self, jugador, faccion, mapa):
         self.jugador = jugador
@@ -166,8 +222,13 @@ class Interfaz:
         self.boton_login.config(state="disabled")
 
     def iniciar_juego(self):
-        pass
-        # TODO: abrir pantalla de seleccion de facciones
+        VentanaFacciones(self.root, jugador=self.jugador,
+                         on_exito=self.al_elegir_faccion)
+
+    def al_elegir_faccion(self, faccion):
+        self.faccion = faccion
+        self.label_faccion.config(text=f"Faccion: {self.faccion}")
+        # TODO: abrir seleccion de mapa / rol
 
 
 j = Interfaz(jugador="—", faccion=1, mapa=0)
