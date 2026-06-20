@@ -158,76 +158,30 @@ class VentanaFacciones:
         self.on_exito(self.seleccion.get())
 
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-TAMANO_MAPA = 10  # cuadricula 10x10
-
-# Valores posibles dentro de cada casilla de la matriz del mapa
-=======
-=======
->>>>>>> Stashed changes
 # ---------------------------------------------------------
 # mapa del juego, lo manejamos como una matriz (lista de listas)
 # ---------------------------------------------------------
 TAMANO_MAPA = 10
 
 # numeritos que representan que hay en cada casilla
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 CASILLA_VACIA  = 0
 CASILLA_MURO   = 1
 CASILLA_TORRE  = 2
 CASILLA_BASE   = 3
 CASILLA_CAMINO = 4
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-# Ubicacion fija de la base central (ultima fila, columna central)
-BASE_FILA    = TAMANO_MAPA - 1
-=======
 # la base va fija, no se mueve. la pusimos abajo al centro
 BASE_FILA = TAMANO_MAPA - 1
->>>>>>> Stashed changes
-=======
-# la base va fija, no se mueve. la pusimos abajo al centro
-BASE_FILA = TAMANO_MAPA - 1
->>>>>>> Stashed changes
 BASE_COLUMNA = TAMANO_MAPA // 2
 
 
 def crear_mapa_vacio():
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    """
-    Crea la matriz del mapa (lista de listas) de TAMANO_MAPA x TAMANO_MAPA,
-    todas las casillas inician vacias excepto la posicion de la base central.
-    """
-=======
     # genera la matriz 10x10 llena de ceros (vacio) y mete la base
->>>>>>> Stashed changes
-=======
-    # genera la matriz 10x10 llena de ceros (vacio) y mete la base
->>>>>>> Stashed changes
     mapa = [[CASILLA_VACIA for _ in range(TAMANO_MAPA)] for _ in range(TAMANO_MAPA)]
     mapa[BASE_FILA][BASE_COLUMNA] = CASILLA_BASE
     return mapa
 
 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-# ----------------------------------------------------------------------
-# Torres
-# ----------------------------------------------------------------------
-TIPOS_TORRE = {
-    "Basica": {
-        "costo":  50,
-        "vida":   100,
-        "dano":   10,
-=======
-=======
->>>>>>> Stashed changes
 # ---------------------------------------------------------
 # torres - de momento solo la parte de datos/logica, la parte
 # visual (dibujarlas en el canvas) la metemos despues
@@ -237,50 +191,22 @@ TIPOS_TORRE = {
         "costo": 50,
         "vida": 100,
         "dano": 10,
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
         "alcance": 2,
         "habilidad": "Ninguna",
         "turnos_habilidad": 0,
     },
     "Pesada": {
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        "costo":  120,
-        "vida":   250,
-        "dano":   25,
-=======
         "costo": 120,
         "vida": 250,
         "dano": 25,
->>>>>>> Stashed changes
-=======
-        "costo": 120,
-        "vida": 250,
-        "dano": 25,
->>>>>>> Stashed changes
         "alcance": 1,
         "habilidad": "Disparo doble",
         "turnos_habilidad": 3,
     },
     "Magica": {
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        "costo":  90,
-        "vida":   60,
-        "dano":   5,
-=======
         "costo": 90,
         "vida": 60,
         "dano": 5,
->>>>>>> Stashed changes
-=======
-        "costo": 90,
-        "vida": 60,
-        "dano": 5,
->>>>>>> Stashed changes
         "alcance": 3,
         "habilidad": "Congelar unidad",
         "turnos_habilidad": 4,
@@ -289,39 +215,12 @@ TIPOS_TORRE = {
 
 
 class Torre:
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-    """
-    Representa una torre colocada en el tablero por el defensor.
-    El tipo determina sus estadisticas base (ver TIPOS_TORRE).
-    """
-=======
     # una torre puesta en el tablero. el tipo le da las stats de base
->>>>>>> Stashed changes
-=======
-    # una torre puesta en el tablero. el tipo le da las stats de base
->>>>>>> Stashed changes
     def __init__(self, tipo, fila, columna):
         if tipo not in TIPOS_TORRE:
             raise ValueError(f"Tipo de torre desconocido: {tipo}")
 
         datos = TIPOS_TORRE[tipo]
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        self.tipo     = tipo
-        self.fila     = fila
-        self.columna  = columna
-        self.vida     = datos["vida"]
-        self.vida_max = datos["vida"]
-        self.dano     = datos["dano"]
-        self.alcance  = datos["alcance"]
-        self.costo    = datos["costo"]
-        self.habilidad = datos["habilidad"]
-        self.turnos_habilidad = datos["turnos_habilidad"]
-        self.turnos_restantes = 0  # contador hasta poder activar la habilidad
-=======
-=======
->>>>>>> Stashed changes
         self.tipo = tipo
         self.fila = fila
         self.columna = columna
@@ -333,10 +232,6 @@ class Torre:
         self.habilidad = datos["habilidad"]
         self.turnos_habilidad = datos["turnos_habilidad"]
         self.turnos_restantes = 0  # cuenta regresiva para poder usar la habilidad de nuevo
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
     def esta_viva(self):
         return self.vida > 0
@@ -348,21 +243,8 @@ class Torre:
         return self.turnos_restantes <= 0
 
     def activar_habilidad(self):
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        """
-        Activa la habilidad especial de la torre si esta disponible y
-        reinicia su contador de turnos. La logica concreta de cada
-        habilidad se implementara mas adelante.
-        """
-=======
         # esto solo prende el cooldown, el efecto real de cada
         # habilidad (congelar, disparo doble, etc) lo hacemos despues
->>>>>>> Stashed changes
-=======
-        # esto solo prende el cooldown, el efecto real de cada
-        # habilidad (congelar, disparo doble, etc) lo hacemos despues
->>>>>>> Stashed changes
         if not self.puede_usar_habilidad():
             return False
         self.turnos_restantes = self.turnos_habilidad
@@ -491,8 +373,5 @@ class Interfaz:
                                 parent=self.root)
 
 
-<<<<<<< Updated upstream
 # aqui arranca todo, al crear el objeto se abre la ventana principal
-=======
->>>>>>> Stashed changes
 j = Interfaz()
