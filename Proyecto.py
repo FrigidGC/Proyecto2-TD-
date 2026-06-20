@@ -4,11 +4,9 @@ from tkinter import messagebox
 ARCHIVO_JUGADORES = "jugadores.txt"
 
 
+# carga el archivo de jugadores en un diccionario
+# formato de cada linea: usuario,contrasena,victorias_defensor,victorias_atacante
 def cargar_jugadores():
-    """
-    Lee el archivo .txt y devuelve un diccionario con los jugadores.
-    Formato de cada linea: usuario,contrasena,victorias_defensor,victorias_atacante
-    """
     jugadores = {}
     try:
         with open(ARCHIVO_JUGADORES, "r") as f:
@@ -18,40 +16,30 @@ def cargar_jugadores():
                     continue
                 partes = linea.split(",")
                 if len(partes) != 4:
-                    continue
+                    continue  # linea mal formada, la ignoramos
                 usuario, contrasena, vic_def, vic_atac = partes
                 jugadores[usuario] = {
-                    "contrasena":         contrasena,
+                    "contrasena": contrasena,
                     "victorias_defensor": int(vic_def),
                     "victorias_atacante": int(vic_atac)
                 }
     except FileNotFoundError:
-        pass
+        pass  # si no existe el archivo todavia, no hay jugadores guardados
     return jugadores
 
+
 def guardar_jugadores(jugadores):
-    """
-    Escribe todos los jugadores en el archivo .txt.
-    Formato de cada linea: usuario,contrasena,victorias_defensor,victorias_atacante
-    """
     with open(ARCHIVO_JUGADORES, "w") as f:
         for usuario, datos in jugadores.items():
-            linea = (f"{usuario},"
-                     f"{datos['contrasena']},"
-                     f"{datos['victorias_defensor']},"
-                     f"{datos['victorias_atacante']}\n")
+            linea = f"{usuario},{datos['contrasena']},{datos['victorias_defensor']},{datos['victorias_atacante']}\n"
             f.write(linea)
 
 
 class VentanaLogin:
-    """
-    Ventana emergente para iniciar sesion o registrarse.
-    Al autenticarse con exito llama a on_exito(usuario).
-    El rol (defensor o atacante) lo determina el slot desde el que se abre
-    esta ventana, no la cuenta en si misma. Los roles son fijos durante
-    toda la partida; para invertirlos, cada jugador debe iniciar sesion
-    en el slot contrario en la siguiente partida.
-    """
+    # ventana para iniciar sesion o registrar un usuario nuevo
+    # el rol (defensor/atacante) NO depende de la cuenta, depende del slot
+    # desde donde se llama esta ventana. osea si quieren jugar al reves
+    # la otra partida, solo inician sesion en el otro slot y ya
     def __init__(self, parent, on_exito):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Inicio de sesion")
@@ -107,7 +95,7 @@ class VentanaLogin:
             return
 
         jugadores[usuario] = {
-            "contrasena":         contrasena,
+            "contrasena": contrasena,
             "victorias_defensor": 0,
             "victorias_atacante": 0
         }
@@ -116,6 +104,8 @@ class VentanaLogin:
         self.on_exito(usuario)
 
 
+# las 3 facciones que pide el proyecto, cada una con su color para identificarla
+# rapido en la interfaz y una descripcion corta
 FACCIONES = {
     "Medieval":   {"color": "#8B4513", "descripcion": "Muros de piedra y torres de madera."},
     "Futurista":  {"color": "#00BFFF", "descripcion": "Estructuras metalicas y energia laser."},
@@ -124,11 +114,8 @@ FACCIONES = {
 
 
 class VentanaFacciones:
-    """
-    Ventana para que el jugador elija su faccion antes de iniciar la partida.
-    Las 3 facciones estan siempre disponibles para ambos jugadores.
-    Llama a on_exito(faccion_elegida) al confirmar.
-    """
+    # ventana de seleccion de faccion. las 3 estan disponibles siempre
+    # para los dos jugadores, no hay restriccion de que no se repitan
     def __init__(self, parent, jugador, on_exito):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Seleccion de Faccion")
@@ -171,30 +158,65 @@ class VentanaFacciones:
         self.on_exito(self.seleccion.get())
 
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 TAMANO_MAPA = 10  # cuadricula 10x10
 
 # Valores posibles dentro de cada casilla de la matriz del mapa
+=======
+=======
+>>>>>>> Stashed changes
+# ---------------------------------------------------------
+# mapa del juego, lo manejamos como una matriz (lista de listas)
+# ---------------------------------------------------------
+TAMANO_MAPA = 10
+
+# numeritos que representan que hay en cada casilla
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 CASILLA_VACIA  = 0
 CASILLA_MURO   = 1
 CASILLA_TORRE  = 2
 CASILLA_BASE   = 3
 CASILLA_CAMINO = 4
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 # Ubicacion fija de la base central (ultima fila, columna central)
 BASE_FILA    = TAMANO_MAPA - 1
+=======
+# la base va fija, no se mueve. la pusimos abajo al centro
+BASE_FILA = TAMANO_MAPA - 1
+>>>>>>> Stashed changes
+=======
+# la base va fija, no se mueve. la pusimos abajo al centro
+BASE_FILA = TAMANO_MAPA - 1
+>>>>>>> Stashed changes
 BASE_COLUMNA = TAMANO_MAPA // 2
 
 
 def crear_mapa_vacio():
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     """
     Crea la matriz del mapa (lista de listas) de TAMANO_MAPA x TAMANO_MAPA,
     todas las casillas inician vacias excepto la posicion de la base central.
     """
+=======
+    # genera la matriz 10x10 llena de ceros (vacio) y mete la base
+>>>>>>> Stashed changes
+=======
+    # genera la matriz 10x10 llena de ceros (vacio) y mete la base
+>>>>>>> Stashed changes
     mapa = [[CASILLA_VACIA for _ in range(TAMANO_MAPA)] for _ in range(TAMANO_MAPA)]
     mapa[BASE_FILA][BASE_COLUMNA] = CASILLA_BASE
     return mapa
 
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 # ----------------------------------------------------------------------
 # Torres
 # ----------------------------------------------------------------------
@@ -203,22 +225,62 @@ TIPOS_TORRE = {
         "costo":  50,
         "vida":   100,
         "dano":   10,
+=======
+=======
+>>>>>>> Stashed changes
+# ---------------------------------------------------------
+# torres - de momento solo la parte de datos/logica, la parte
+# visual (dibujarlas en el canvas) la metemos despues
+# ---------------------------------------------------------
+TIPOS_TORRE = {
+    "Basica": {
+        "costo": 50,
+        "vida": 100,
+        "dano": 10,
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
         "alcance": 2,
         "habilidad": "Ninguna",
         "turnos_habilidad": 0,
     },
     "Pesada": {
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "costo":  120,
         "vida":   250,
         "dano":   25,
+=======
+        "costo": 120,
+        "vida": 250,
+        "dano": 25,
+>>>>>>> Stashed changes
+=======
+        "costo": 120,
+        "vida": 250,
+        "dano": 25,
+>>>>>>> Stashed changes
         "alcance": 1,
         "habilidad": "Disparo doble",
         "turnos_habilidad": 3,
     },
     "Magica": {
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "costo":  90,
         "vida":   60,
         "dano":   5,
+=======
+        "costo": 90,
+        "vida": 60,
+        "dano": 5,
+>>>>>>> Stashed changes
+=======
+        "costo": 90,
+        "vida": 60,
+        "dano": 5,
+>>>>>>> Stashed changes
         "alcance": 3,
         "habilidad": "Congelar unidad",
         "turnos_habilidad": 4,
@@ -227,15 +289,25 @@ TIPOS_TORRE = {
 
 
 class Torre:
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
     """
     Representa una torre colocada en el tablero por el defensor.
     El tipo determina sus estadisticas base (ver TIPOS_TORRE).
     """
+=======
+    # una torre puesta en el tablero. el tipo le da las stats de base
+>>>>>>> Stashed changes
+=======
+    # una torre puesta en el tablero. el tipo le da las stats de base
+>>>>>>> Stashed changes
     def __init__(self, tipo, fila, columna):
         if tipo not in TIPOS_TORRE:
             raise ValueError(f"Tipo de torre desconocido: {tipo}")
 
         datos = TIPOS_TORRE[tipo]
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         self.tipo     = tipo
         self.fila     = fila
         self.columna  = columna
@@ -247,6 +319,24 @@ class Torre:
         self.habilidad = datos["habilidad"]
         self.turnos_habilidad = datos["turnos_habilidad"]
         self.turnos_restantes = 0  # contador hasta poder activar la habilidad
+=======
+=======
+>>>>>>> Stashed changes
+        self.tipo = tipo
+        self.fila = fila
+        self.columna = columna
+        self.vida = datos["vida"]
+        self.vida_max = datos["vida"]
+        self.dano = datos["dano"]
+        self.alcance = datos["alcance"]
+        self.costo = datos["costo"]
+        self.habilidad = datos["habilidad"]
+        self.turnos_habilidad = datos["turnos_habilidad"]
+        self.turnos_restantes = 0  # cuenta regresiva para poder usar la habilidad de nuevo
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 
     def esta_viva(self):
         return self.vida > 0
@@ -258,11 +348,21 @@ class Torre:
         return self.turnos_restantes <= 0
 
     def activar_habilidad(self):
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
         """
         Activa la habilidad especial de la torre si esta disponible y
         reinicia su contador de turnos. La logica concreta de cada
         habilidad se implementara mas adelante.
         """
+=======
+        # esto solo prende el cooldown, el efecto real de cada
+        # habilidad (congelar, disparo doble, etc) lo hacemos despues
+>>>>>>> Stashed changes
+=======
+        # esto solo prende el cooldown, el efecto real de cada
+        # habilidad (congelar, disparo doble, etc) lo hacemos despues
+>>>>>>> Stashed changes
         if not self.puede_usar_habilidad():
             return False
         self.turnos_restantes = self.turnos_habilidad
@@ -278,10 +378,9 @@ class Torre:
 
 class Interfaz:
     def __init__(self):
-        # Jugador 1 (defensor)
+        # jugador 1 siempre defensor, jugador 2 siempre atacante
         self.jugador1 = "—"
         self.faccion1 = "—"
-        # Jugador 2 (atacante)
         self.jugador2 = "—"
         self.faccion2 = "—"
 
@@ -289,18 +388,15 @@ class Interfaz:
         self.root.title("Defensa de Torres")
         self.crear_interfaz()
 
-    # ------------------------------------------------------------------
-    # Construccion de la pantalla principal
-    # ------------------------------------------------------------------
     def crear_interfaz(self):
         canvas = tk.Canvas(self.root, width=520, height=160)
         canvas.pack()
-        canvas.create_text(260, 70,  text="Defensa de Torres",
+        canvas.create_text(260, 70, text="Defensa de Torres",
                            fill="gold", font=("Arial", 30, "bold"))
         canvas.create_text(260, 115, text="Proyecto II",
                            fill="#aabbff", font=("Arial", 14))
 
-        # ---- Jugador 1 ----
+        # bloque jugador 1
         frame1 = tk.LabelFrame(self.root, text="Jugador 1 — Defensor",
                                 padx=10, pady=6)
         frame1.pack(fill="x", padx=16, pady=(4, 2))
@@ -314,7 +410,7 @@ class Interfaz:
                                       width=26, command=self.abrir_login1)
         self.boton_login1.grid(row=0, column=1, rowspan=2, padx=(12, 0))
 
-        # ---- Jugador 2 ----
+        # bloque jugador 2
         frame2 = tk.LabelFrame(self.root, text="Jugador 2 — Atacante",
                                 padx=10, pady=6)
         frame2.pack(fill="x", padx=16, pady=(2, 8))
@@ -329,7 +425,7 @@ class Interfaz:
                                       state="disabled")
         self.boton_login2.grid(row=0, column=1, rowspan=2, padx=(12, 0))
 
-        # ---- Nota de roles ----
+        # aclaracion de que los roles no cambian a media partida
         tk.Label(
             self.root,
             text="Los roles son fijos durante la partida.\n"
@@ -337,7 +433,6 @@ class Interfaz:
             font=("Arial", 8), fg="#777777", justify="center"
         ).pack(pady=(0, 4))
 
-        # ---- Boton iniciar ----
         self.boton_iniciar = tk.Button(self.root, text="Iniciar Juego",
                                        command=self.iniciar_juego,
                                        state="disabled", width=20)
@@ -345,9 +440,7 @@ class Interfaz:
 
         self.root.mainloop()
 
-    # ------------------------------------------------------------------
-    # Flujo Jugador 1
-    # ------------------------------------------------------------------
+    # --- flujo jugador 1 ---
     def abrir_login1(self):
         VentanaLogin(self.root, on_exito=self.al_autenticar_j1)
 
@@ -361,11 +454,9 @@ class Interfaz:
     def al_elegir_faccion1(self, faccion):
         self.faccion1 = faccion
         self.label_f1.config(text=f"Faccion: {faccion}")
-        self.boton_login2.config(state="normal")
+        self.boton_login2.config(state="normal")  # ya puede entrar el jugador 2
 
-    # ------------------------------------------------------------------
-    # Flujo Jugador 2
-    # ------------------------------------------------------------------
+    # --- flujo jugador 2 ---
     def abrir_login2(self):
         VentanaLogin(self.root, on_exito=self.al_autenticar_j2)
 
@@ -386,9 +477,7 @@ class Interfaz:
         self.label_f2.config(text=f"Faccion: {faccion}")
         self.boton_iniciar.config(state="normal")
 
-    # ------------------------------------------------------------------
-    # Inicio de partida
-    # ------------------------------------------------------------------
+    # --- arrancar partida ---
     def iniciar_juego(self):
         resumen = (
             f"Jugador 1 (Defensor): {self.jugador1}  [{self.faccion1}]\n"
@@ -396,10 +485,14 @@ class Interfaz:
             "¿Comenzar la partida?"
         )
         if messagebox.askyesno("Confirmar partida", resumen, parent=self.root):
-            # TODO: abrir VentanaTablero(self.root, ...)
+            # falta meter VentanaTablero aqui, viene en el siguiente avance
             messagebox.showinfo("En construccion",
                                 "El tablero de juego se implementara en el proximo avance.",
                                 parent=self.root)
 
 
+<<<<<<< Updated upstream
+# aqui arranca todo, al crear el objeto se abre la ventana principal
+=======
+>>>>>>> Stashed changes
 j = Interfaz()
