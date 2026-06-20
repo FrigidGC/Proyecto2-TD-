@@ -171,6 +171,111 @@ class VentanaFacciones:
         self.on_exito(self.seleccion.get())
 
 
+TAMANO_MAPA = 10  # cuadricula 10x10
+
+# Valores posibles dentro de cada casilla de la matriz del mapa
+CASILLA_VACIA  = 0
+CASILLA_MURO   = 1
+CASILLA_TORRE  = 2
+CASILLA_BASE   = 3
+CASILLA_CAMINO = 4
+
+# Ubicacion fija de la base central (ultima fila, columna central)
+BASE_FILA    = TAMANO_MAPA - 1
+BASE_COLUMNA = TAMANO_MAPA // 2
+
+
+def crear_mapa_vacio():
+    """
+    Crea la matriz del mapa (lista de listas) de TAMANO_MAPA x TAMANO_MAPA,
+    todas las casillas inician vacias excepto la posicion de la base central.
+    """
+    mapa = [[CASILLA_VACIA for _ in range(TAMANO_MAPA)] for _ in range(TAMANO_MAPA)]
+    mapa[BASE_FILA][BASE_COLUMNA] = CASILLA_BASE
+    return mapa
+
+
+# ----------------------------------------------------------------------
+# Torres
+# ----------------------------------------------------------------------
+TIPOS_TORRE = {
+    "Basica": {
+        "costo":  50,
+        "vida":   100,
+        "dano":   10,
+        "alcance": 2,
+        "habilidad": "Ninguna",
+        "turnos_habilidad": 0,
+    },
+    "Pesada": {
+        "costo":  120,
+        "vida":   250,
+        "dano":   25,
+        "alcance": 1,
+        "habilidad": "Disparo doble",
+        "turnos_habilidad": 3,
+    },
+    "Magica": {
+        "costo":  90,
+        "vida":   60,
+        "dano":   5,
+        "alcance": 3,
+        "habilidad": "Congelar unidad",
+        "turnos_habilidad": 4,
+    },
+}
+
+
+class Torre:
+    """
+    Representa una torre colocada en el tablero por el defensor.
+    El tipo determina sus estadisticas base (ver TIPOS_TORRE).
+    """
+    def __init__(self, tipo, fila, columna):
+        if tipo not in TIPOS_TORRE:
+            raise ValueError(f"Tipo de torre desconocido: {tipo}")
+
+        datos = TIPOS_TORRE[tipo]
+        self.tipo     = tipo
+        self.fila     = fila
+        self.columna  = columna
+        self.vida     = datos["vida"]
+        self.vida_max = datos["vida"]
+        self.dano     = datos["dano"]
+        self.alcance  = datos["alcance"]
+        self.costo    = datos["costo"]
+        self.habilidad = datos["habilidad"]
+        self.turnos_habilidad = datos["turnos_habilidad"]
+        self.turnos_restantes = 0  # contador hasta poder activar la habilidad
+
+    def esta_viva(self):
+        return self.vida > 0
+
+    def recibir_dano(self, cantidad):
+        self.vida = max(0, self.vida - cantidad)
+
+    def puede_usar_habilidad(self):
+        return self.turnos_restantes <= 0
+
+    def activar_habilidad(self):
+        """
+        Activa la habilidad especial de la torre si esta disponible y
+        reinicia su contador de turnos. La logica concreta de cada
+        habilidad se implementara mas adelante.
+        """
+        if not self.puede_usar_habilidad():
+            return False
+        self.turnos_restantes = self.turnos_habilidad
+        return True
+
+    def pasar_turno(self):
+        if self.turnos_restantes > 0:
+            self.turnos_restantes -= 1
+
+    def __repr__(self):
+        return f"Torre({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
+
+
 class Interfaz:
     def __init__(self):
         # Jugador 1 (defensor)
