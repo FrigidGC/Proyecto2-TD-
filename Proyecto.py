@@ -4,7 +4,7 @@ from tkinter import messagebox
 ARCHIVO_JUGADORES = "jugadores.txt"
 
 
-# carga el archivo de jugadores en un diccionario
+# Se carga el archivo de jugadores en un diccionario
 # formato de cada linea: usuario,contrasena,victorias_defensor,victorias_atacante
 def cargar_jugadores():
     jugadores = {}
@@ -104,8 +104,8 @@ class VentanaLogin:
         self.on_exito(usuario)
 
 
-# las 3 facciones que pide el proyecto, cada una con su color para identificarla
-# rapido en la interfaz y una descripcion corta
+# Se definen las 3 facciones que pide el proyecto, cada una con su color para
+# identificarla rapido en la interfaz y una descripcion corta
 FACCIONES = {
     "Medieval":   {"color": "#8B4513", "descripcion": "Muros de piedra y torres de madera."},
     "Futurista":  {"color": "#00BFFF", "descripcion": "Estructuras metalicas y energia laser."},
@@ -114,7 +114,7 @@ FACCIONES = {
 
 
 class VentanaFacciones:
-    # ventana de seleccion de faccion. las 3 estan disponibles siempre
+    # Se crea la ventana de seleccion de faccion. las 3 estan disponibles siempre
     # para los dos jugadores, no hay restriccion de que no se repitan
     def __init__(self, parent, jugador, on_exito):
         self.ventana = tk.Toplevel(parent)
@@ -159,33 +159,45 @@ class VentanaFacciones:
 
 
 # ---------------------------------------------------------
-# mapa del juego, lo manejamos como una matriz (lista de listas)
+# MAPA DEL JUEGO
+# Lo guardamos como una matriz: una lista que tiene adentro
+# otras 10 listas (una por fila). Cada casilla guarda un numero
+# que nos dice que hay ahi (vacio, muro, torre, etc).
 # ---------------------------------------------------------
-TAMANO_MAPA = 10
+TAMANO_MAPA = 15  # el mapa es de 15x15 casillas
 
-# numeritos que representan que hay en cada casilla
-CASILLA_VACIA  = 0
-CASILLA_MURO   = 1
-CASILLA_TORRE  = 2
-CASILLA_BASE   = 3
-CASILLA_CAMINO = 4
+# En vez de usar 0, 1, 2... directamente en el codigo, se usan
+# estos nombres para que sea mas facil de leer y de recordar
+CASILLA_VACIA  = 0  # no hay nada, se puede construir ahi
+CASILLA_MURO   = 1  # hay un muro
+CASILLA_TORRE  = 2  # hay una torre
+CASILLA_BASE   = 3  # es la base central, no se puede tocar
+CASILLA_CAMINO = 4  # camino por donde entran los atacantes
 
-# la base va fija, no se mueve. la pusimos abajo al centro
+# la base siempre esta en el mismo lugar: en la ultima fila,
+# justo en el centro
 BASE_FILA = TAMANO_MAPA - 1
 BASE_COLUMNA = TAMANO_MAPA // 2
 
 
 def crear_mapa_vacio():
-    # genera la matriz 10x10 llena de ceros (vacio) y mete la base
-    mapa = [[CASILLA_VACIA for _ in range(TAMANO_MAPA)] for _ in range(TAMANO_MAPA)]
-    mapa[BASE_FILA][BASE_COLUMNA] = CASILLA_BASE
+    # Se crea una matriz de TAMANO_MAPA x TAMANO_MAPA, toda vacia
+    mapa = []
+    for fila in range(TAMANO_MAPA):
+        mapa.append([CASILLA_VACIA] * TAMANO_MAPA)
+
+    mapa[BASE_FILA][BASE_COLUMNA] = CASILLA_BASE  # se coloca la base
     return mapa
 
 
 # ---------------------------------------------------------
-# torres - de momento solo la parte de datos/logica, la parte
-# visual (dibujarlas en el canvas) la metemos despues
+# TORRES
+# Por ahora solo manejamos los datos y la logica de las torres.
+# Dibujarlas en el tablero lo hacemos mas adelante.
 # ---------------------------------------------------------
+
+# Aqui se guardan las estadisticas de cada tipo de torre.
+# es como una tabla: el nombre de la torre y sus datos
 TIPOS_TORRE = {
     "Basica": {
         "costo": 50,
@@ -215,15 +227,19 @@ TIPOS_TORRE = {
 
 
 class Torre:
-    # una torre puesta en el tablero. el tipo le da las stats de base
+    # esta clase representa UNA torre que el jugador puso en el mapa.
+    # cuando se crea, le copiamos las estadisticas segun su tipo
+    # (sacadas del diccionario TIPOS_TORRE de arriba)
     def __init__(self, tipo, fila, columna):
         if tipo not in TIPOS_TORRE:
             raise ValueError(f"Tipo de torre desconocido: {tipo}")
 
-        datos = TIPOS_TORRE[tipo]
+        datos = TIPOS_TORRE[tipo]  # aqui sacamos las stats de ese tipo
+
         self.tipo = tipo
-        self.fila = fila
-        self.columna = columna
+        self.fila = fila          # en que fila del mapa esta
+        self.columna = columna    # en que columna del mapa esta
+
         self.vida = datos["vida"]
         self.vida_max = datos["vida"]
         self.dano = datos["dano"]
@@ -231,82 +247,112 @@ class Torre:
         self.costo = datos["costo"]
         self.habilidad = datos["habilidad"]
         self.turnos_habilidad = datos["turnos_habilidad"]
-        self.turnos_restantes = 0  # cuenta regresiva para poder usar la habilidad de nuevo
+
+        # esto cuenta cuantos turnos faltan para poder volver
+        # a usar la habilidad especial. arranca en 0 (lista para usar)
+        self.turnos_restantes = 0
 
     def esta_viva(self):
+        # la torre sigue viva mientras le quede vida
         return self.vida > 0
 
     def recibir_dano(self, cantidad):
-        self.vida = max(0, self.vida - cantidad)
+        # le restamos vida, pero nunca dejamos que baje de 0
+        self.vida = self.vida - cantidad
+        if self.vida < 0:
+            self.vida = 0
 
     def puede_usar_habilidad(self):
+        # solo puede usar la habilidad si ya paso el tiempo de espera
         return self.turnos_restantes <= 0
 
     def activar_habilidad(self):
-        # esto solo prende el cooldown, el efecto real de cada
-        # habilidad (congelar, disparo doble, etc) lo hacemos despues
+        # si todavia esta en cooldown, no hacemos nada
         if not self.puede_usar_habilidad():
             return False
+
+        # si se puede usar, reiniciamos el contador de espera
+        # (el efecto de cada habilidad lo programamos mas adelante)
         self.turnos_restantes = self.turnos_habilidad
         return True
 
     def pasar_turno(self):
+        # Cada turno que pasa, se baja el contador de espera en 1
         if self.turnos_restantes > 0:
             self.turnos_restantes -= 1
 
     def __repr__(self):
+        # Esto es solo para que se vea bonito si se imprime la torre
         return f"Torre({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
 
 
 class VentanaTablero:
-    # esta ventana dibuja el mapa (la matriz) como cuadritos de colores
-    # cada numero de la matriz se pinta de un color distinto
+    # Esta ventana muestra el mapa en pantalla como una cuadricula
+    # de cuadritos de colores. Cada cuadrito representa una casilla
+    # de la matriz "mapa". Tambien deja hacer click para construir.
     def __init__(self, parent):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Tablero de juego")
         self.ventana.resizable(False, False)
 
-        # creamos el mapa vacio (la matriz) cuando se abre la ventana
+        # Se crea la matriz del mapa, todavia vacia
         self.mapa = crear_mapa_vacio()
 
-        # tamano de cada cuadrito en pixeles
-        self.tamano_casilla = 40
+        # Cuantos pixeles mide cada cuadrito en pantalla
+        # (se bajo a 30 para que el mapa de 15x15 quepa bien)
+        self.tamano_casilla = 30
 
-        # el canvas mide 10 casillas de ancho y 10 de alto
+        # El dibujo completo mide TAMANO_MAPA cuadritos de ancho y de alto
         ancho_total = TAMANO_MAPA * self.tamano_casilla
         alto_total = TAMANO_MAPA * self.tamano_casilla
 
+        # El Canvas es el "lienzo" donde se va a dibujar el mapa
         self.canvas = tk.Canvas(self.ventana, width=ancho_total, height=alto_total)
         self.canvas.pack(padx=10, pady=10)
 
+        # Se le avisa a Tkinter: "cuando hagan click en el canvas,
+        # llama a la funcion al_hacer_click"
+        self.canvas.bind("<Button-1>", self.al_hacer_click)
+
+        # Se dibuja el mapa por primera vez al abrir la ventana
         self.dibujar_mapa()
 
+    def al_hacer_click(self, evento):
+        # Se convierte el pixel del click en fila/columna de la matriz,
+        # dividiendo entre el tamano de cada cuadrito
+        columna = evento.x // self.tamano_casilla
+        fila = evento.y // self.tamano_casilla
+
+        # Si esa casilla esta vacia, se pone un muro ahi
+        if self.mapa[fila][columna] == CASILLA_VACIA:
+            self.mapa[fila][columna] = CASILLA_MURO
+            self.dibujar_mapa()
+
     def color_de_casilla(self, valor):
-        # cada numero de la matriz tiene un color para mostrarlo en pantalla
+        # Esta funcion recibe el numero de una casilla (0, 1, 2...)
+        # y devuelve de que color hay que pintarla en el canvas
         if valor == CASILLA_VACIA:
-            return "#dddddd"      # gris claro, casilla libre
+            return "#dddddd"      # gris claro = casilla libre
         elif valor == CASILLA_MURO:
-            return "#8B4513"      # cafe, muro
+            return "#8B4513"      # cafe = muro
         elif valor == CASILLA_TORRE:
-            return "#4169E1"      # azul, torre
+            return "#4169E1"      # azul = torre
         elif valor == CASILLA_BASE:
-            return "gold"         # dorado, la base
+            return "gold"         # dorado = la base, no se toca
         elif valor == CASILLA_CAMINO:
-            return "#f0e68c"      # amarillo claro, camino
+            return "#f0e68c"      # amarillo claro = camino
         else:
-            return "white"
+            return "white"        # por si acaso, color de respaldo
 
     def dibujar_mapa(self):
-        # recorremos la matriz fila por fila y columna por columna
-        # y dibujamos un cuadrito por cada casilla
-        self.canvas.delete("all")  # borramos lo que haya antes de redibujar
+        self.canvas.delete("all")  # se borra lo anterior antes de redibujar
 
         for fila in range(TAMANO_MAPA):
             for columna in range(TAMANO_MAPA):
                 valor = self.mapa[fila][columna]
                 color = self.color_de_casilla(valor)
 
-                # posicion en pixeles del cuadrito segun su fila y columna
+                # Posicion en pixeles de este cuadrito
                 x1 = columna * self.tamano_casilla
                 y1 = fila * self.tamano_casilla
                 x2 = x1 + self.tamano_casilla
@@ -428,5 +474,5 @@ class Interfaz:
             VentanaTablero(self.root)
 
 
-# aqui arranca todo, al crear el objeto se abre la ventana principal
+# Aqui arranca todo: al crear el objeto se abre la ventana principal
 j = Interfaz()
