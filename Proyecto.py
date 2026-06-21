@@ -258,6 +258,64 @@ class Torre:
         return f"Torre({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
 
 
+class VentanaTablero:
+    # esta ventana dibuja el mapa (la matriz) como cuadritos de colores
+    # cada numero de la matriz se pinta de un color distinto
+    def __init__(self, parent):
+        self.ventana = tk.Toplevel(parent)
+        self.ventana.title("Tablero de juego")
+        self.ventana.resizable(False, False)
+
+        # creamos el mapa vacio (la matriz) cuando se abre la ventana
+        self.mapa = crear_mapa_vacio()
+
+        # tamano de cada cuadrito en pixeles
+        self.tamano_casilla = 40
+
+        # el canvas mide 10 casillas de ancho y 10 de alto
+        ancho_total = TAMANO_MAPA * self.tamano_casilla
+        alto_total = TAMANO_MAPA * self.tamano_casilla
+
+        self.canvas = tk.Canvas(self.ventana, width=ancho_total, height=alto_total)
+        self.canvas.pack(padx=10, pady=10)
+
+        self.dibujar_mapa()
+
+    def color_de_casilla(self, valor):
+        # cada numero de la matriz tiene un color para mostrarlo en pantalla
+        if valor == CASILLA_VACIA:
+            return "#dddddd"      # gris claro, casilla libre
+        elif valor == CASILLA_MURO:
+            return "#8B4513"      # cafe, muro
+        elif valor == CASILLA_TORRE:
+            return "#4169E1"      # azul, torre
+        elif valor == CASILLA_BASE:
+            return "gold"         # dorado, la base
+        elif valor == CASILLA_CAMINO:
+            return "#f0e68c"      # amarillo claro, camino
+        else:
+            return "white"
+
+    def dibujar_mapa(self):
+        # recorremos la matriz fila por fila y columna por columna
+        # y dibujamos un cuadrito por cada casilla
+        self.canvas.delete("all")  # borramos lo que haya antes de redibujar
+
+        for fila in range(TAMANO_MAPA):
+            for columna in range(TAMANO_MAPA):
+                valor = self.mapa[fila][columna]
+                color = self.color_de_casilla(valor)
+
+                # posicion en pixeles del cuadrito segun su fila y columna
+                x1 = columna * self.tamano_casilla
+                y1 = fila * self.tamano_casilla
+                x2 = x1 + self.tamano_casilla
+                y2 = y1 + self.tamano_casilla
+
+                self.canvas.create_rectangle(x1, y1, x2, y2,
+                                             fill=color, outline="black")
+
+
 class Interfaz:
     def __init__(self):
         # jugador 1 siempre defensor, jugador 2 siempre atacante
@@ -367,10 +425,7 @@ class Interfaz:
             "¿Comenzar la partida?"
         )
         if messagebox.askyesno("Confirmar partida", resumen, parent=self.root):
-            # falta meter VentanaTablero aqui, viene en el siguiente avance
-            messagebox.showinfo("En construccion",
-                                "El tablero de juego se implementara en el proximo avance.",
-                                parent=self.root)
+            VentanaTablero(self.root)
 
 
 # aqui arranca todo, al crear el objeto se abre la ventana principal
