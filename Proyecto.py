@@ -114,9 +114,10 @@ FACCIONES = {
 
 
 class VentanaFacciones:
-    # Se crea la ventana de seleccion de faccion. las 3 estan disponibles siempre
-    # para los dos jugadores, no hay restriccion de que no se repitan
-    def __init__(self, parent, jugador, on_exito):
+    # Se crea la ventana de seleccion de faccion.
+    # Si se pasa "faccion_bloqueada", esa opcion aparece deshabilitada
+    # porque el otro jugador ya la eligio (el enunciado lo pide)
+    def __init__(self, parent, jugador, on_exito, faccion_bloqueada=None):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Seleccion de Faccion")
         self.ventana.resizable(False, False)
@@ -134,15 +135,21 @@ class VentanaFacciones:
         frame_opciones.pack(padx=20, pady=4)
 
         for nombre, datos in FACCIONES.items():
+            bloqueada = (nombre == faccion_bloqueada)
             fila = tk.Frame(frame_opciones, bd=1, relief="groove", padx=8, pady=6)
             fila.pack(fill="x", pady=3)
 
-            tk.Radiobutton(fila, text=nombre, variable=self.seleccion,
-                           value=nombre, font=("Arial", 10, "bold"),
-                           fg=datos["color"]).pack(side="left")
+            tk.Radiobutton(
+                fila, text=nombre, variable=self.seleccion,
+                value=nombre, font=("Arial", 10, "bold"),
+                fg="#aaaaaa" if bloqueada else datos["color"],
+                state="disabled" if bloqueada else "normal"
+            ).pack(side="left")
 
-            tk.Label(fila, text=datos["descripcion"],
-                     font=("Arial", 9), fg="#555555").pack(side="left", padx=(8, 0))
+            desc = datos["descripcion"] + (" [ya elegida]" if bloqueada else "")
+            tk.Label(fila, text=desc,
+                     font=("Arial", 9),
+                     fg="#aaaaaa" if bloqueada else "#555555").pack(side="left", padx=(8, 0))
 
         self.label_error = tk.Label(self.ventana, text="", fg="red")
         self.label_error.pack()
@@ -456,7 +463,8 @@ class Interfaz:
         self.label_j2.config(text=f"Usuario: {usuario}")
         self.boton_login2.config(state="disabled")
         VentanaFacciones(self.root, jugador=usuario,
-                         on_exito=self.al_elegir_faccion2)
+                         on_exito=self.al_elegir_faccion2,
+                         faccion_bloqueada=self.faccion1)
 
     def al_elegir_faccion2(self, faccion):
         self.faccion2 = faccion
