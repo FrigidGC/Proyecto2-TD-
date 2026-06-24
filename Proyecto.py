@@ -2,49 +2,62 @@ import tkinter as tk
 from tkinter import messagebox
 
 
+# =============================================================
+# VENTANA DE LOGIN
+# =============================================================
 class VentanaLogin:
-    # ventana para iniciar sesion o registrar un usuario nuevo
-    # el rol depende del slot desde donde se abre, no de la cuenta
+    # Se muestra una ventana emergente donde el jugador puede
+    # iniciar sesion con una cuenta existente o crear una nueva.
+    # El rol (defensor o atacante) NO depende de la cuenta,
+    # sino del slot desde donde se abrio esta ventana.
 
-    ARCHIVO = "jugadores.txt"
+    ARCHIVO = "jugadores.txt"  # nombre del archivo donde se guardan los jugadores
 
     def __init__(self, parent, on_exito):
+        # "on_exito" es la funcion que se llama cuando el login es exitoso,
+        # pasandole el nombre de usuario como argumento
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Inicio de sesion")
         self.ventana.resizable(False, False)
         self.on_exito = on_exito
-        self.ventana.grab_set()
+        self.ventana.grab_set()  # bloquea la ventana principal mientras esta abierta
 
+        # --- campos de texto ---
         tk.Label(self.ventana, text="Usuario:").grid(row=0, column=0, padx=10, pady=8, sticky="e")
         self.entry_usuario = tk.Entry(self.ventana, width=20)
         self.entry_usuario.grid(row=0, column=1, padx=10, pady=8)
 
         tk.Label(self.ventana, text="Contrasena:").grid(row=1, column=0, padx=10, pady=8, sticky="e")
-        self.entry_contrasena = tk.Entry(self.ventana, show="*", width=20)
+        self.entry_contrasena = tk.Entry(self.ventana, show="*", width=20)  # show="*" oculta lo que se escribe
         self.entry_contrasena.grid(row=1, column=1, padx=10, pady=8)
 
+        # label vacio que se usa para mostrar errores en rojo
         self.label_error = tk.Label(self.ventana, text="", fg="red")
         self.label_error.grid(row=2, column=0, columnspan=2)
 
+        # --- botones ---
         tk.Button(self.ventana, text="Iniciar sesion", width=14,
                   command=self.iniciar_sesion).grid(row=3, column=0, padx=10, pady=10)
         tk.Button(self.ventana, text="Registrarse", width=14,
                   command=self.registrarse).grid(row=3, column=1, padx=10, pady=10)
 
-    # --- manejo del archivo de jugadores ---
+    # ----------------------------------------------------------
+    # Manejo del archivo de jugadores
+    # ----------------------------------------------------------
 
     def cargar_jugadores(self):
-        # Se lee el archivo y se devuelve un diccionario con todos los jugadores
+        # Se lee el archivo linea por linea y se arma un diccionario.
+        # Cada clave es el nombre de usuario, y el valor son sus datos.
         jugadores = {}
         try:
             with open(self.ARCHIVO, "r") as f:
                 for linea in f:
                     linea = linea.strip()
                     if linea == "":
-                        continue
+                        continue  # se ignoran las lineas vacias
                     partes = linea.split(",")
                     if len(partes) != 4:
-                        continue
+                        continue  # se ignoran lineas con formato incorrecto
                     usuario, contrasena, vic_def, vic_atac = partes
                     jugadores[usuario] = {
                         "contrasena": contrasena,
@@ -52,49 +65,65 @@ class VentanaLogin:
                         "victorias_atacante": int(vic_atac)
                     }
         except FileNotFoundError:
-            pass  # si el archivo no existe todavia, se devuelve vacio
+            pass  # si el archivo no existe todavia, se devuelve el diccionario vacio
         return jugadores
 
     def guardar_jugadores(self, jugadores):
-        # Se escribe el diccionario de jugadores de vuelta al archivo
+        # Se recorre el diccionario y se escribe cada jugador
+        # como una linea en el archivo, separado por comas
         with open(self.ARCHIVO, "w") as f:
             for usuario, datos in jugadores.items():
                 linea = f"{usuario},{datos['contrasena']},{datos['victorias_defensor']},{datos['victorias_atacante']}\n"
                 f.write(linea)
 
-    # --- logica de los botones ---
+    # ----------------------------------------------------------
+    # Logica de los botones
+    # ----------------------------------------------------------
 
     def _obtener_campos(self):
+        # Se leen y limpian los espacios en blanco de los campos de texto
         return self.entry_usuario.get().strip(), self.entry_contrasena.get().strip()
 
     def iniciar_sesion(self):
         usuario, contrasena = self._obtener_campos()
+
+        # Se valida que los campos no esten vacios
         if not usuario or not contrasena:
             self.label_error.config(text="Completa todos los campos.")
             return
 
         jugadores = self.cargar_jugadores()
+
+        # Se verifica que el usuario exista en el archivo
         if usuario not in jugadores:
             self.label_error.config(text="Usuario no existe.")
             return
+
+        # Se verifica que la contrasena sea correcta
         if jugadores[usuario]["contrasena"] != contrasena:
             self.label_error.config(text="Contrasena incorrecta.")
             return
 
+        # Si todo esta bien, se cierra la ventana y se avisa al llamador
         self.ventana.destroy()
         self.on_exito(usuario)
 
     def registrarse(self):
         usuario, contrasena = self._obtener_campos()
+
+        # Se valida que los campos no esten vacios
         if not usuario or not contrasena:
             self.label_error.config(text="Completa todos los campos.")
             return
 
         jugadores = self.cargar_jugadores()
+
+        # No se permite registrar un nombre de usuario que ya existe
         if usuario in jugadores:
             self.label_error.config(text="El usuario ya existe.")
             return
 
+        # Se agrega el nuevo jugador con 0 victorias y se guarda
         jugadores[usuario] = {
             "contrasena": contrasena,
             "victorias_defensor": 0,
@@ -105,11 +134,15 @@ class VentanaLogin:
         self.on_exito(usuario)
 
 
+# =============================================================
+# VENTANA DE SELECCION DE FACCION
+# =============================================================
 class VentanaFacciones:
-    # Se crea la ventana de seleccion de faccion.
+    # Se muestra una ventana donde el jugador elige su faccion.
     # Si se pasa "faccion_bloqueada", esa opcion aparece deshabilitada
-    # porque el otro jugador ya la eligio (el enunciado lo pide)
+    # porque el otro jugador ya la eligio (requisito del enunciado).
 
+    # Las 3 facciones disponibles con su color e identificacion visual
     FACCIONES = {
         "Medieval":   {"color": "#8B4513", "descripcion": "Muros de piedra y torres de madera."},
         "Futurista":  {"color": "#00BFFF", "descripcion": "Estructuras metalicas y energia laser."},
@@ -117,6 +150,7 @@ class VentanaFacciones:
     }
 
     def __init__(self, parent, jugador, on_exito, faccion_bloqueada=None):
+        # "faccion_bloqueada" es la faccion que ya eligio el otro jugador (o None)
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Seleccion de Faccion")
         self.ventana.resizable(False, False)
@@ -128,16 +162,19 @@ class VentanaFacciones:
         tk.Label(self.ventana, text="Elige tu faccion:",
                  font=("Arial", 11)).pack(pady=(0, 8))
 
+        # Se usa StringVar para saber cual opcion esta seleccionada
         self.seleccion = tk.StringVar(value="")
 
         frame_opciones = tk.Frame(self.ventana)
         frame_opciones.pack(padx=20, pady=4)
 
+        # Se crea una fila por cada faccion
         for nombre, datos in self.FACCIONES.items():
-            bloqueada = (nombre == faccion_bloqueada)
+            bloqueada = (nombre == faccion_bloqueada)  # True si ya la eligio el otro jugador
             fila = tk.Frame(frame_opciones, bd=1, relief="groove", padx=8, pady=6)
             fila.pack(fill="x", pady=3)
 
+            # Si la faccion esta bloqueada, se muestra gris y deshabilitada
             tk.Radiobutton(
                 fila, text=nombre, variable=self.seleccion,
                 value=nombre, font=("Arial", 10, "bold"),
@@ -145,11 +182,13 @@ class VentanaFacciones:
                 state="disabled" if bloqueada else "normal"
             ).pack(side="left")
 
+            # Si esta bloqueada, se avisa con "[ya elegida]"
             desc = datos["descripcion"] + (" [ya elegida]" if bloqueada else "")
             tk.Label(fila, text=desc,
                      font=("Arial", 9),
                      fg="#aaaaaa" if bloqueada else "#555555").pack(side="left", padx=(8, 0))
 
+        # Label vacio para mostrar errores
         self.label_error = tk.Label(self.ventana, text="", fg="red")
         self.label_error.pack()
 
@@ -157,25 +196,31 @@ class VentanaFacciones:
                   command=self.confirmar).pack(pady=10)
 
     def confirmar(self):
+        # Se verifica que el jugador haya seleccionado algo antes de continuar
         if not self.seleccion.get():
             self.label_error.config(text="Debes seleccionar una faccion.")
             return
         self.ventana.destroy()
-        self.on_exito(self.seleccion.get())
+        self.on_exito(self.seleccion.get())  # se devuelve la faccion elegida
 
 
+# =============================================================
+# CLASE TORRE
+# =============================================================
 class Torre:
     # Se representa una torre colocada en el tablero por el defensor.
-    # El tipo le da sus estadisticas base (sacadas de TIPOS_TORRE)
+    # Cada torre tiene un tipo ("Basica", "Pesada" o "Magica") que
+    # determina sus estadisticas. Los datos de cada tipo estan
+    # en el diccionario TIPOS_TORRE.
 
     TIPOS_TORRE = {
         "Basica": {
             "costo": 50,
             "vida": 100,
             "dano": 10,
-            "alcance": 2,
+            "alcance": 2,           # casillas de distancia a las que puede atacar
             "habilidad": "Ninguna",
-            "turnos_habilidad": 0,
+            "turnos_habilidad": 0,  # 0 significa que no tiene habilidad especial
         },
         "Pesada": {
             "costo": 120,
@@ -183,7 +228,7 @@ class Torre:
             "dano": 25,
             "alcance": 1,
             "habilidad": "Disparo doble",
-            "turnos_habilidad": 3,
+            "turnos_habilidad": 3,  # se puede usar cada 3 turnos
         },
         "Magica": {
             "costo": 90,
@@ -191,7 +236,7 @@ class Torre:
             "dano": 5,
             "alcance": 3,
             "habilidad": "Congelar unidad",
-            "turnos_habilidad": 4,
+            "turnos_habilidad": 4,  # se puede usar cada 4 turnos
         },
     }
 
@@ -199,159 +244,188 @@ class Torre:
         if tipo not in self.TIPOS_TORRE:
             raise ValueError(f"Tipo de torre desconocido: {tipo}")
 
-        datos = self.TIPOS_TORRE[tipo]
-        self.tipo = tipo
-        self.fila = fila
+        datos = self.TIPOS_TORRE[tipo]  # se sacan las stats del tipo elegido
+
+        self.tipo    = tipo
+        self.fila    = fila      # posicion en la matriz del mapa
         self.columna = columna
-        self.vida = datos["vida"]
-        self.vida_max = datos["vida"]
-        self.dano = datos["dano"]
-        self.alcance = datos["alcance"]
-        self.costo = datos["costo"]
-        self.habilidad = datos["habilidad"]
+
+        self.vida     = datos["vida"]
+        self.vida_max = datos["vida"]   # se guarda el maximo para saber cuanta vida tenia originalmente
+        self.dano     = datos["dano"]
+        self.alcance  = datos["alcance"]
+        self.costo    = datos["costo"]
+        self.habilidad        = datos["habilidad"]
         self.turnos_habilidad = datos["turnos_habilidad"]
-        self.turnos_restantes = 0  # cuenta regresiva para usar la habilidad de nuevo
+        self.turnos_restantes = 0  # cuantos turnos faltan para poder usar la habilidad de nuevo
 
     def esta_viva(self):
+        # Se devuelve True si la torre todavia tiene vida
         return self.vida > 0
 
     def recibir_dano(self, cantidad):
-        # Se resta vida, pero no baja de 0
+        # Se resta la vida recibida, pero no puede bajar de 0
         self.vida = self.vida - cantidad
         if self.vida < 0:
             self.vida = 0
 
     def puede_usar_habilidad(self):
+        # La habilidad esta lista cuando el contador llega a 0
         return self.turnos_restantes <= 0
 
     def activar_habilidad(self):
-        # Se activa el cooldown; el efecto de cada habilidad se programa despues
+        # Se intenta activar la habilidad. Si el cooldown no termino, no hace nada.
+        # El efecto real de cada habilidad se programa en la fase de combate.
         if not self.puede_usar_habilidad():
             return False
-        self.turnos_restantes = self.turnos_habilidad
+        self.turnos_restantes = self.turnos_habilidad  # se reinicia el contador
         return True
 
     def pasar_turno(self):
-        # Cada turno que pasa, se baja el contador de espera en 1
+        # Se llama al final de cada turno para bajar el contador de la habilidad
         if self.turnos_restantes > 0:
             self.turnos_restantes -= 1
 
     def __repr__(self):
+        # Se usa para imprimir la torre de forma legible (util para depurar)
         return f"Torre({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
 
 
+# =============================================================
+# VENTANA DEL TABLERO
+# =============================================================
 class VentanaTablero:
-    # Se muestra el tablero de juego: el mapa en cuadritos de colores,
-    # un panel lateral para elegir que construir, y el dinero del defensor
+    # Se muestra el tablero de juego: una cuadricula de colores que
+    # representa la matriz del mapa, mas un panel lateral donde el
+    # defensor puede elegir que construir y ver su dinero disponible.
 
-    TAMANO_MAPA   = 15   # la cuadricula es de 15x15 casillas
-    TAMANO_CASILLA = 38  # pixeles por cuadrito
+    TAMANO_MAPA    = 15   # la cuadricula es de 15x15 casillas
+    TAMANO_CASILLA = 38   # cada cuadrito mide 38x38 pixeles en pantalla
 
-    # valores posibles en cada casilla de la matriz
-    VACIA  = 0
-    MURO   = 1
-    TORRE  = 2
-    BASE   = 3
-    CAMINO = 4
+    # Valores numericos que se guardan en cada casilla de la matriz.
+    # Se usan nombres en vez de numeros sueltos para que el codigo sea legible.
+    VACIA  = 0  # casilla libre, se puede construir ahi
+    MURO   = 1  # hay un muro
+    TORRE  = 2  # hay una torre
+    BASE   = 3  # es la base central del defensor, no se puede tocar
+    CAMINO = 4  # camino por donde entraran las unidades atacantes
 
-    # colores para pintar cada tipo de casilla
+    # Color de pantalla que le corresponde a cada valor de casilla
     COLORES = {
         0: "#dddddd",   # vacio = gris claro
         1: "#8B4513",   # muro = cafe
         2: "#4169E1",   # torre = azul
         3: "gold",      # base = dorado
-        4: "#f0e68c",   # camino = amarillo
+        4: "#f0e68c",   # camino = amarillo claro
     }
 
-    DINERO_INICIAL = 300  # con cuanto dinero arranca el defensor cada ronda
+    DINERO_INICIAL = 300  # dinero con el que arranca el defensor al inicio de cada ronda
 
     def __init__(self, parent, jugador_defensor):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Tablero de juego")
         self.ventana.resizable(False, False)
 
-        # Se guarda quien es el defensor para mostrarlo en pantalla
-        self.jugador_defensor = jugador_defensor
+        self.jugador_defensor = jugador_defensor  # nombre del jugador defensor
 
-        # Se crea la matriz del mapa toda vacia, con la base ya colocada
+        # Se crea la matriz del mapa (15x15) con todas las casillas vacias,
+        # excepto la base que ya se coloca en su posicion fija
         self.mapa = self._crear_mapa()
 
-        # Se guardan las torres que se van colocando en el tablero
+        # Lista donde se van guardando los objetos Torre que se colocan
         self.torres = []
 
-        # Dinero disponible del defensor en esta ronda
+        # Dinero actual del defensor, empieza con el valor inicial
         self.dinero = self.DINERO_INICIAL
 
-        # Lo que el defensor tiene seleccionado para construir
-        # puede ser "Muro", "Basica", "Pesada" o "Magica"
+        # Variable que guarda que esta seleccionado en el panel:
+        # "Muro", "Basica", "Pesada" o "Magica"
         self.seleccion = tk.StringVar(value="Muro")
 
         self._construir_ventana()
-        self.dibujar_mapa()
+        self.dibujar_mapa()  # se dibuja el mapa vacio al abrir la ventana
+
+    # ----------------------------------------------------------
+    # Creacion de la matriz del mapa
+    # ----------------------------------------------------------
 
     def _crear_mapa(self):
-        # Se crea una matriz TAMANO_MAPA x TAMANO_MAPA llena de ceros (vacio)
+        # Se arma la matriz fila por fila. Cada casilla empieza en VACIA (0).
         mapa = []
         for fila in range(self.TAMANO_MAPA):
             mapa.append([self.VACIA] * self.TAMANO_MAPA)
 
-        # Se coloca la base fija en la ultima fila, columna del centro
+        # Se coloca la base en la ultima fila, justo en el centro
         fila_base = self.TAMANO_MAPA - 1
         col_base  = self.TAMANO_MAPA // 2
         mapa[fila_base][col_base] = self.BASE
         return mapa
 
+    # ----------------------------------------------------------
+    # Construccion de la interfaz del tablero
+    # ----------------------------------------------------------
+
     def _construir_ventana(self):
-        # Se divide la ventana en dos partes: el mapa a la izquierda
-        # y el panel de construccion a la derecha
+        # La ventana se divide en dos columnas:
+        # izquierda = el mapa | derecha = panel de construccion
         frame_principal = tk.Frame(self.ventana)
         frame_principal.pack(padx=8, pady=8)
 
-        # --- lado izquierdo: el canvas con el mapa ---
+        # --- columna izquierda: canvas donde se dibuja el mapa ---
         tamano_canvas = self.TAMANO_MAPA * self.TAMANO_CASILLA
         self.canvas = tk.Canvas(frame_principal,
                                 width=tamano_canvas, height=tamano_canvas)
         self.canvas.grid(row=0, column=0, padx=(0, 8))
+
+        # Se conecta el evento de click izquierdo con la funcion al_hacer_click
         self.canvas.bind("<Button-1>", self.al_hacer_click)
 
-        # --- lado derecho: panel de construccion ---
+        # --- columna derecha: panel de construccion ---
         panel = tk.Frame(frame_principal, bd=2, relief="groove", padx=8, pady=8)
         panel.grid(row=0, column=1, sticky="n")
 
+        # Nombre del jugador defensor
         tk.Label(panel, text=f"Defensor:\n{self.jugador_defensor}",
                  font=("Arial", 10, "bold"), justify="center").pack(pady=(0, 8))
 
-        # Se muestra el dinero disponible; se actualiza cada vez que se gasta
+        # Label del dinero; se actualiza cada vez que el jugador construye algo
         self.label_dinero = tk.Label(panel, text=f"Dinero: ${self.dinero}",
                                      font=("Arial", 11), fg="green")
         self.label_dinero.pack(pady=(0, 10))
 
-        # --- botones de seleccion de lo que se va a construir ---
+        # Titulo de la seccion de construccion
         tk.Label(panel, text="Construir:", font=("Arial", 9, "bold")).pack(anchor="w")
 
+        # Opciones de construccion: (valor interno, texto visible con precio)
         opciones = [
-            ("Muro",   f"Muro  $10"),
-            ("Basica", f"Torre Basica  $50"),
-            ("Pesada", f"Torre Pesada  $120"),
-            ("Magica", f"Torre Magica  $90"),
+            ("Muro",   "Muro  $10"),
+            ("Basica", "Torre Basica  $50"),
+            ("Pesada", "Torre Pesada  $120"),
+            ("Magica", "Torre Magica  $90"),
         ]
 
+        # Se crea un boton de radio por cada opcion de construccion
         for valor, texto in opciones:
             tk.Radiobutton(
                 panel, text=texto, variable=self.seleccion,
                 value=valor, anchor="w", font=("Arial", 9)
             ).pack(fill="x", pady=1)
 
-        # Se muestra un mensaje de ayuda abajo del panel
+        # Instruccion breve para el usuario
         tk.Label(panel, text="\nHaz click en una\ncasilla gris\npara construir",
                  font=("Arial", 8), fg="#777777", justify="center").pack(pady=(10, 0))
 
+    # ----------------------------------------------------------
+    # Interaccion con el mapa
+    # ----------------------------------------------------------
+
     def al_hacer_click(self, evento):
-        # Se convierte la posicion del click (en pixeles) a fila/columna de la matriz
+        # Se convierte la posicion del click (en pixeles) a fila y columna
+        # de la matriz, dividiendo entre el tamano de cada cuadrito
         columna = evento.x // self.TAMANO_CASILLA
         fila    = evento.y // self.TAMANO_CASILLA
 
-        # Se ignora si el click cae fuera de los limites del mapa
+        # Se ignora si el click cae fuera de los limites de la cuadricula
         if fila >= self.TAMANO_MAPA or columna >= self.TAMANO_MAPA:
             return
 
@@ -359,75 +433,92 @@ class VentanaTablero:
         if self.mapa[fila][columna] != self.VACIA:
             return
 
-        construccion = self.seleccion.get()
+        construccion = self.seleccion.get()  # que eligio el jugador en el panel
 
         if construccion == "Muro":
             costo = 10
             if self.dinero < costo:
-                messagebox.showwarning("Sin dinero", "No tienes dinero suficiente para un muro.",
+                messagebox.showwarning("Sin dinero",
+                                       "No tienes dinero suficiente para un muro.",
                                        parent=self.ventana)
                 return
+            # Se marca la casilla como muro en la matriz
             self.mapa[fila][columna] = self.MURO
             self.dinero -= costo
 
         else:
-            # Se crea la torre del tipo seleccionado
+            # Se obtiene el costo de la torre elegida desde su propio diccionario
             costo = Torre.TIPOS_TORRE[construccion]["costo"]
             if self.dinero < costo:
                 messagebox.showwarning("Sin dinero",
-                                       f"No tienes dinero suficiente para esta torre.",
+                                       "No tienes dinero suficiente para esta torre.",
                                        parent=self.ventana)
                 return
+            # Se crea el objeto Torre y se agrega a la lista de torres activas
             nueva_torre = Torre(construccion, fila, columna)
             self.torres.append(nueva_torre)
+            # Se marca la casilla como torre en la matriz
             self.mapa[fila][columna] = self.TORRE
             self.dinero -= costo
 
-        # Se actualiza el label del dinero y se redibuja el mapa
+        # Se actualiza el label del dinero y se redibuja el mapa con el cambio
         self.label_dinero.config(text=f"Dinero: ${self.dinero}")
         self.dibujar_mapa()
 
+    # ----------------------------------------------------------
+    # Dibujo del mapa
+    # ----------------------------------------------------------
+
     def dibujar_mapa(self):
-        self.canvas.delete("all")  # se borra lo anterior antes de redibujar
+        self.canvas.delete("all")  # se borra todo antes de redibujar
 
         for fila in range(self.TAMANO_MAPA):
             for columna in range(self.TAMANO_MAPA):
                 valor = self.mapa[fila][columna]
-                color = self.COLORES.get(valor, "white")
+                color = self.COLORES.get(valor, "white")  # color segun el tipo de casilla
 
-                # Posicion en pixeles de este cuadrito
+                # Se calcula la posicion en pixeles de este cuadrito
                 x1 = columna * self.TAMANO_CASILLA
                 y1 = fila    * self.TAMANO_CASILLA
                 x2 = x1 + self.TAMANO_CASILLA
                 y2 = y1 + self.TAMANO_CASILLA
 
+                # Se dibuja el rectangulo con el color correspondiente
                 self.canvas.create_rectangle(x1, y1, x2, y2,
                                              fill=color, outline="black")
 
-                # Si hay una torre en esta casilla, se escribe su inicial encima
+                # Si la casilla tiene una torre, se dibuja la inicial de su tipo
+                # encima del cuadrito para identificarla visualmente
                 if valor == self.TORRE:
                     torre = self._torre_en(fila, columna)
                     if torre:
-                        inicial = torre.tipo[0]  # "B", "P" o "M"
-                        self.canvas.create_text(x1 + self.TAMANO_CASILLA // 2,
-                                                y1 + self.TAMANO_CASILLA // 2,
-                                                text=inicial, fill="white",
-                                                font=("Arial", 10, "bold"))
+                        inicial = torre.tipo[0]  # "B" = Basica, "P" = Pesada, "M" = Magica
+                        cx = x1 + self.TAMANO_CASILLA // 2  # centro horizontal del cuadrito
+                        cy = y1 + self.TAMANO_CASILLA // 2  # centro vertical del cuadrito
+                        self.canvas.create_text(cx, cy, text=inicial,
+                                                fill="white", font=("Arial", 10, "bold"))
 
     def _torre_en(self, fila, columna):
-        # Se busca en la lista de torres cual esta en esa posicion
+        # Se recorre la lista de torres y se devuelve la que este en esa posicion.
+        # Se devuelve None si no hay ninguna torre ahi.
         for torre in self.torres:
             if torre.fila == fila and torre.columna == columna:
                 return torre
         return None
 
 
+# =============================================================
+# INTERFAZ PRINCIPAL
+# =============================================================
 class Interfaz:
+    # Se crea la ventana principal del juego donde los dos jugadores
+    # inician sesion, eligen su faccion, y arrancan la partida.
+
     def __init__(self):
-        # Se guardan los datos de ambos jugadores
-        self.jugador1 = "—"
+        # Se inicializan los datos de ambos jugadores como vacios
+        self.jugador1 = "—"  # jugador 1 siempre es el defensor
         self.faccion1 = "—"
-        self.jugador2 = "—"
+        self.jugador2 = "—"  # jugador 2 siempre es el atacante
         self.faccion2 = "—"
 
         self.root = tk.Tk()
@@ -435,6 +526,7 @@ class Interfaz:
         self._construir_ventana()
 
     def _construir_ventana(self):
+        # Titulo del juego en un canvas para poder usar colores y fuentes grandes
         canvas = tk.Canvas(self.root, width=520, height=160)
         canvas.pack()
         canvas.create_text(260, 70, text="Defensa de Torres",
@@ -442,7 +534,7 @@ class Interfaz:
         canvas.create_text(260, 115, text="Proyecto II",
                            fill="#aabbff", font=("Arial", 14))
 
-        # bloque jugador 1
+        # --- bloque del jugador 1 (defensor) ---
         frame1 = tk.LabelFrame(self.root, text="Jugador 1 — Defensor",
                                 padx=10, pady=6)
         frame1.pack(fill="x", padx=16, pady=(4, 2))
@@ -456,7 +548,8 @@ class Interfaz:
                                       width=26, command=self.abrir_login1)
         self.boton_login1.grid(row=0, column=1, rowspan=2, padx=(12, 0))
 
-        # bloque jugador 2
+        # --- bloque del jugador 2 (atacante) ---
+        # Empieza deshabilitado; se habilita cuando el jugador 1 ya inicio sesion
         frame2 = tk.LabelFrame(self.root, text="Jugador 2 — Atacante",
                                 padx=10, pady=6)
         frame2.pack(fill="x", padx=16, pady=(2, 8))
@@ -468,10 +561,10 @@ class Interfaz:
 
         self.boton_login2 = tk.Button(frame2, text="Iniciar sesion / Registrarse",
                                       width=26, command=self.abrir_login2,
-                                      state="disabled")
+                                      state="disabled")  # deshabilitado hasta que J1 termine
         self.boton_login2.grid(row=0, column=1, rowspan=2, padx=(12, 0))
 
-        # aclaracion de roles fijos
+        # Aclaracion de que los roles no cambian durante la partida
         tk.Label(
             self.root,
             text="Los roles son fijos durante la partida.\n"
@@ -479,34 +572,47 @@ class Interfaz:
             font=("Arial", 8), fg="#777777", justify="center"
         ).pack(pady=(0, 4))
 
+        # Boton para iniciar la partida; solo se habilita cuando ambos jugadores estan listos
         self.boton_iniciar = tk.Button(self.root, text="Iniciar Juego",
                                        command=self.iniciar_juego,
                                        state="disabled", width=20)
         self.boton_iniciar.pack(pady=6)
 
-        self.root.mainloop()
+        self.root.mainloop()  # se inicia el loop principal de Tkinter
 
-    # --- flujo jugador 1 ---
+    # ----------------------------------------------------------
+    # Flujo del jugador 1
+    # ----------------------------------------------------------
+
     def abrir_login1(self):
+        # Se abre la ventana de login para el jugador 1
         VentanaLogin(self.root, on_exito=self.al_autenticar_j1)
 
     def al_autenticar_j1(self, usuario):
+        # Se guarda el usuario y se actualiza el label en pantalla
         self.jugador1 = usuario
         self.label_j1.config(text=f"Usuario: {usuario}")
-        self.boton_login1.config(state="disabled")
+        self.boton_login1.config(state="disabled")  # ya no se puede loguear de nuevo
+        # Se abre inmediatamente la seleccion de faccion
         VentanaFacciones(self.root, jugador=usuario,
                          on_exito=self.al_elegir_faccion1)
 
     def al_elegir_faccion1(self, faccion):
+        # Se guarda la faccion elegida y se habilita el turno del jugador 2
         self.faccion1 = faccion
         self.label_f1.config(text=f"Faccion: {faccion}")
-        self.boton_login2.config(state="normal")
+        self.boton_login2.config(state="normal")  # ahora puede entrar el jugador 2
 
-    # --- flujo jugador 2 ---
+    # ----------------------------------------------------------
+    # Flujo del jugador 2
+    # ----------------------------------------------------------
+
     def abrir_login2(self):
+        # Se abre la ventana de login para el jugador 2
         VentanaLogin(self.root, on_exito=self.al_autenticar_j2)
 
     def al_autenticar_j2(self, usuario):
+        # No se permite que los dos jugadores usen la misma cuenta
         if usuario == self.jugador1:
             messagebox.showerror(
                 "Error", "El jugador 2 no puede ser el mismo que el jugador 1.",
@@ -515,23 +621,30 @@ class Interfaz:
         self.jugador2 = usuario
         self.label_j2.config(text=f"Usuario: {usuario}")
         self.boton_login2.config(state="disabled")
+        # Se abre la seleccion de faccion con la faccion del J1 bloqueada
         VentanaFacciones(self.root, jugador=usuario,
                          on_exito=self.al_elegir_faccion2,
                          faccion_bloqueada=self.faccion1)
 
     def al_elegir_faccion2(self, faccion):
+        # Se guarda la faccion y se habilita el boton de inicio
         self.faccion2 = faccion
         self.label_f2.config(text=f"Faccion: {faccion}")
-        self.boton_iniciar.config(state="normal")
+        self.boton_iniciar.config(state="normal")  # ya estan listos los dos jugadores
 
-    # --- arrancar partida ---
+    # ----------------------------------------------------------
+    # Inicio de la partida
+    # ----------------------------------------------------------
+
     def iniciar_juego(self):
+        # Se muestra un resumen de los dos jugadores y se pide confirmacion
         resumen = (
             f"Jugador 1 (Defensor): {self.jugador1}  [{self.faccion1}]\n"
             f"Jugador 2 (Atacante): {self.jugador2}  [{self.faccion2}]\n\n"
             "¿Comenzar la partida?"
         )
         if messagebox.askyesno("Confirmar partida", resumen, parent=self.root):
+            # Se abre el tablero pasandole el nombre del defensor
             VentanaTablero(self.root, jugador_defensor=self.jugador1)
 
 
