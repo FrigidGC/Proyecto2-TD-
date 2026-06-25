@@ -993,7 +993,7 @@ class VentanaTablero:
     # Pathfinding (BFS) para las unidades atacantes
     # ----------------------------------------------------------
 
-    def _es_transitable(self, fila, columna, fila_base, col_base):
+    def _es_transitable(self, fila, columna, fila_base, col_base, respetar_unidades=False):
         # Una casilla se puede pisar si esta dentro del mapa y no tiene
         # un obstaculo permanente (muro, torre o la base).
         # Las otras unidades NO se tratan como obstaculo para el BFS:
@@ -1008,6 +1008,8 @@ class VentanaTablero:
         contenido = self.mapa[fila][columna]
         # MURO y TORRE son obstaculos permanentes; UNIDAD y VACIA y CAMINO
         # se consideran libres para el calculo de la ruta
+        if respetar_unidades:
+            return contenido not in (self.MURO, self.TORRE, self.UNIDAD)
         return contenido not in (self.MURO, self.TORRE)
 
     def _es_adyacente_a_base(self, fila, columna, fila_base, col_base):
@@ -1016,28 +1018,16 @@ class VentanaTablero:
         distancia = abs(fila - fila_base) + abs(columna - col_base)
         return distancia == 1
 
-    def _calcular_ruta(self, unidad):
-        # Busca, con BFS, el camino mas corto desde la posicion actual de
-        # la unidad hasta quedar JUNTO a la base (no encima de ella),
-        # evitando muros, torres y la base misma (rodeandolos si existe
-        # un camino libre alternativo).
-        # Devuelve una lista de pasos [(fila, col), (fila, col), ...] sin
-        # incluir la posicion inicial, o None si no hay ningun camino libre.
+    def _calcular_ruta(self, unidad, respetar_unidades=False, ignorar_obstaculos=False):
         fila_base = self.TAMANO_MAPA - 1
         col_base  = self.TAMANO_MAPA // 2
 
         inicio = (unidad.fila, unidad.columna)
 
-        # Si ya esta pegada a la base, no necesita moverse mas: se queda
-        # ahi atacandola (ver _unidades_atacan).
         if self._es_adyacente_a_base(unidad.fila, unidad.columna, fila_base, col_base):
             return []
 
-        # Movimientos posibles: abajo, izquierda, derecha y arriba.
-        # Se prioriza "abajo" para que, entre caminos de igual longitud,
-        # la unidad prefiera avanzar hacia la base en vez de desviarse.
         movimientos = [(1, 0), (0, -1), (0, 1), (-1, 0)]
-
         visitados = {inicio}
         cola = [(inicio, [])]
         indice = 0
@@ -1053,74 +1043,77 @@ class VentanaTablero:
                     continue
 
                 f_sig, c_sig = siguiente
-                if not self._es_transitable(f_sig, c_sig, fila_base, col_base):
-                    continue
+
+                if ignorar_obstaculos:
+                    # Validaciones manuales si ignoramos los obstáculos fijos
+                    if not (0 <= f_sig < self.TAMANO_MAPA and 0 <= c_sig < self.TAMANO_MAPA):
+                        continue
+                    if f_sig == fila_base and c_sig == col_base:
+                        continue
+                    # Si respetar_unidades es True, los aliados siguen bloqueando
+                    if respetar_unidades and self.mapa[f_sig][c_sig] == self.UNIDAD:
+                        continue
+                else:
+                    if not self._es_transitable(f_sig, c_sig, fila_base, col_base, respetar_unidades):
+                        continue
 
                 nuevo_camino = camino + [siguiente]
 
-                # Llegar a una casilla adyacente a la base es el objetivo:
-                # ahi se detiene, sin pisarla nunca.
                 if self._es_adyacente_a_base(f_sig, c_sig, fila_base, col_base):
                     return nuevo_camino
 
                 visitados.add(siguiente)
                 cola.append((siguiente, nuevo_camino))
 
-        # No se encontro ningun camino libre hasta quedar junto a la base
-
         return None
-
+    
     def _unidades_avanzan(self):
-        # Cada unidad busca, con pathfinding (BFS), el camino mas corto
-        # hasta quedar JUNTO a la base (rodeando muros y torres si hay un
-        # camino libre), sin pisarla nunca. Si no existe ningun camino
-        # libre (esta completamente bloqueada por muros/torres), la unidad
-        # se queda en su lugar y atacara el obstaculo que tenga enfrente
-        # en la fase de ataque.
-        # Las unidades con velocidad 2 intentan dos pasos por turno.
-        # Una unidad congelada no se mueve ese turno.
         fila_base = self.TAMANO_MAPA - 1
         col_base  = self.TAMANO_MAPA // 2
 
-        for unidad in self.unidades:
-            if not unidad.esta_viva():
-                continue
+        unidades_vivas = sorted(
+            [u for u in self.unidades if u.esta_viva()],
+            key=lambda u: (-u.fila, u.columna)
+        )
 
-            # Verificar congelamiento (colocado por la Torre Magica)
+        for unidad in unidades_vivas:
             if getattr(unidad, "congelada", False):
-                unidad.congelada = False  # se descongela para el siguiente turno
+                unidad.congelada = False
                 self._log(f"{unidad.tipo} ({unidad.fila},{unidad.columna}): congelada, no avanza")
+                unidad.pasar_turno()
                 continue
 
             pasos = unidad.velocidad
             for _ in range(pasos):
-                # Si ya esta junto a la base, no sigue avanzando: se queda
-                # ahi atacandola (la base nunca se pisa).
                 if self._es_adyacente_a_base(unidad.fila, unidad.columna, fila_base, col_base):
                     break
 
-                ruta = self._calcular_ruta(unidad)
+                ruta = self._calcular_ruta(unidad, respetar_unidades=True)
 
-                # Sin camino libre: la unidad queda bloqueada (se quedara
-                # atacando el obstaculo que tenga delante en _unidades_atacan)
+                if ruta is None:
+                    # Plan B: buscar la ruta más corta rompiendo estructuras
+                    ruta = self._calcular_ruta(unidad, respetar_unidades=True, ignorar_obstaculos=True)
+
+                if ruta is None:
+                    break  # bloqueada completamente por aliados o bordes
                 if not ruta:
-                    break
+                    break  # ya en destino
 
                 siguiente_fila, siguiente_col = ruta[0]
 
-                # Solo se mueve si la casilla destino esta realmente vacia
-                # (puede estar ocupada por otra unidad aunque el BFS la
-                # considerara transitable para calcular el camino)
-                if self.mapa[siguiente_fila][siguiente_col] not in (self.VACIA, self.CAMINO):
-                    break  # otra unidad bloquea el paso, espera al siguiente turno
+                # NUEVO: Si el siguiente paso es una estructura, detenerse frente a ella para atacarla
+                if self.mapa[siguiente_fila][siguiente_col] in (self.MURO, self.TORRE):
+                    break
 
-                # Se libera la casilla anterior
+                # Verificacion final en mapa real
+                if self.mapa[siguiente_fila][siguiente_col] not in (self.VACIA, self.CAMINO):
+                    break
+
                 if self.mapa[unidad.fila][unidad.columna] == self.UNIDAD:
                     self.mapa[unidad.fila][unidad.columna] = self.VACIA
 
                 unidad.fila    = siguiente_fila
                 unidad.columna = siguiente_col
-
                 self.mapa[unidad.fila][unidad.columna] = self.UNIDAD
 
                 if self._es_adyacente_a_base(unidad.fila, unidad.columna, fila_base, col_base):
@@ -1128,6 +1121,7 @@ class VentanaTablero:
                     break
 
             unidad.pasar_turno()
+
 
     def _unidades_atacan(self):
         # Cada unidad ataca el obstaculo que le este bloqueando el paso:
