@@ -357,7 +357,7 @@ class VentanaTablero:
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Tablero de juego")
         self.ventana.resizable(False, False)
-
+        self.vida_base = 200
         self.jugador_defensor = jugador_defensor  # nombre del jugador defensor
         self.jugador_atacante = jugador_atacante  # nombre del jugador atacante
 
@@ -518,6 +518,14 @@ class VentanaTablero:
             width=14, command=self.terminar_despliegue
         )
         self.boton_terminar_ataque.pack(pady=(4, 0))
+        # Boton para avanzar un turno de combate manualmente
+        self.boton_turno = tk.Button(
+            self.panel_atacante, text="Ejecutar turno",
+            font=("Arial", 9, "bold"), fg="white", bg="#336633",
+            width=14, command=self.ejecutar_combate,
+            state="disabled"  # se habilita cuando empieza el combate
+        )
+        self.boton_turno.pack(pady=(4, 0))
 
     # ----------------------------------------------------------
     # Interaccion con el mapa
@@ -626,6 +634,7 @@ class VentanaTablero:
         )
 
     def terminar_despliegue(self):
+
         # Se le pide confirmacion al atacante antes de pasar al combate
         confirmar = messagebox.askyesno(
             "Terminar despliegue",
@@ -639,6 +648,7 @@ class VentanaTablero:
 
         self.fase = "combate"
         self.boton_terminar_ataque.config(state="disabled")
+        self.boton_turno.config(state="normal")  # ahora si se puede ejecutar turnos
 
         # Se avisa que el combate viene en el siguiente avance
         messagebox.showinfo(
@@ -648,6 +658,134 @@ class VentanaTablero:
             parent=self.ventana
         )
 
+    def ejecutar_combate(self):
+        # Se ejecuta un turno completo de combate en este orden:
+        # 1. Las torres atacan a las unidades en su alcance
+        # 2. Las unidades avanzan hacia la base
+        # 3. Las unidades atacan lo que tengan enfrente
+        # 4. Se eliminan las torres y muros destruidos
+        # 5. Se eliminan las unidades muertas
+        # 6. Se revisa si alguien gano la ronda
+
+        self._torres_atacan()
+        self._unidades_avanzan()
+        self._unidades_atacan()
+        self._limpiar_muertos()
+        self._revisar_victoria()
+        self.dibujar_mapa()
+
+    def _torres_atacan(self):
+        # Cada torre busca unidades dentro de su alcance y les hace dano.
+        # El alcance se mide en casillas de distancia (Manhattan).
+        for torre in self.torres:
+            if not torre.esta_viva():
+                continue
+            for unidad in self.unidades:
+                if not unidad.esta_viva():
+                    continue
+                distancia = abs(torre.fila - unidad.fila) + abs(torre.columna - unidad.columna)
+                if distancia <= torre.alcance:
+                    unidad.recibir_dano(torre.dano)
+                    break  # cada torre ataca solo una unidad por turno
+            torre.pasar_turno()
+
+    def _unidades_avanzan(self):
+        # Cada unidad avanza hacia abajo (fila mayor = mas cerca de la base).
+        # Si la casilla destino esta ocupada, la unidad no se mueve.
+        fila_base = self.TAMANO_MAPA - 1
+        col_base  = self.TAMANO_MAPA // 2
+
+        for unidad in self.unidades:
+            if not unidad.esta_viva():
+                continue
+
+            nueva_fila = unidad.fila + unidad.velocidad
+
+            # Si llego a la base, le hace dano directamente
+            if nueva_fila >= fila_base and unidad.columna == col_base:
+                self.mapa[unidad.fila][unidad.columna] = self.VACIA
+                unidad.fila = fila_base  # se marca como llegada
+                continue
+
+            # Si la casilla destino esta vacia, se mueve
+            if nueva_fila < self.TAMANO_MAPA and self.mapa[nueva_fila][unidad.columna] == self.VACIA:
+                self.mapa[unidad.fila][unidad.columna] = self.VACIA
+                unidad.fila = nueva_fila
+                self.mapa[nueva_fila][unidad.columna] = self.UNIDAD
+
+            unidad.pasar_turno()
+
+    def _unidades_atacan(self):
+        # Cada unidad ataca lo que tenga en la casilla inmediatamente abajo.
+        fila_base = self.TAMANO_MAPA - 1
+        col_base  = self.TAMANO_MAPA // 2
+
+        for unidad in self.unidades:
+            if not unidad.esta_viva():
+                continue
+
+            fila_objetivo = unidad.fila + 1
+            if fila_objetivo >= self.TAMANO_MAPA:
+                continue
+
+            contenido = self.mapa[fila_objetivo][unidad.columna]
+
+            if contenido == self.MURO:
+                muro = self._muro_en(fila_objetivo, unidad.columna)
+                if muro:
+                    muro.recibir_dano(unidad.dano)
+
+            elif contenido == self.TORRE:
+                torre = self._torre_en(fila_objetivo, unidad.columna)
+                if torre:
+                    torre.recibir_dano(unidad.dano)
+
+            elif contenido == self.BASE:
+                # La unidad llego a la base y le hace dano
+                self.vida_base -= unidad.dano
+
+    def _limpiar_muertos(self):
+        # Se eliminan de las listas y del mapa los muros, torres y unidades destruidos.
+        for muro in self.muros:
+            if not muro.esta_vivo():
+                self.mapa[muro.fila][muro.columna] = self.VACIA
+        self.muros = [m for m in self.muros if m.esta_vivo()]
+
+        for torre in self.torres:
+            if not torre.esta_viva():
+                self.mapa[torre.fila][torre.columna] = self.VACIA
+        self.torres = [t for t in self.torres if t.esta_viva()]
+
+        for unidad in self.unidades:
+            if not unidad.esta_viva():
+                if 0 <= unidad.fila < self.TAMANO_MAPA:
+                    self.mapa[unidad.fila][unidad.columna] = self.VACIA
+        self.unidades = [u for u in self.unidades if u.esta_viva()]
+
+    def _muro_en(self, fila, columna):
+        # Se busca el muro que este en esa posicion del mapa.
+        for muro in self.muros:
+            if muro.fila == fila and muro.columna == columna:
+                return muro
+        return None
+    
+    def _revisar_victoria(self):
+        # El defensor gana si no quedan unidades vivas
+        if len(self.unidades) == 0:
+            messagebox.showinfo("Fin de ronda",
+                                "¡El defensor gano! Todas las unidades fueron eliminadas.",
+                                parent=self.ventana)
+            self.fase = "fin"
+            return
+
+        # El atacante gana si destruye la base
+        if self.vida_base <= 0:
+            messagebox.showinfo("Fin de ronda",
+                                "¡El atacante gano! La base fue destruida.",
+                                parent=self.ventana)
+            self.fase = "fin"
+   
+   
     # ----------------------------------------------------------
     # Dibujo del mapa
     # ----------------------------------------------------------
@@ -891,6 +1029,7 @@ class Interfaz:
         self.boton_iniciar.pack(pady=6)
 
         self.root.mainloop()  # se inicia el loop principal de Tkinter
+        
 
     # ----------------------------------------------------------
     # Flujo del jugador 1
