@@ -995,16 +995,20 @@ class VentanaTablero:
 
     def _es_transitable(self, fila, columna, fila_base, col_base):
         # Una casilla se puede pisar si esta dentro del mapa y no tiene
-        # un obstaculo permanente (muro, torre o la base). La base se
-        # trata como un obstaculo mas: las unidades nunca la pisan, se
-        # detienen en la casilla adyacente y la atacan desde ahi (igual
-        # que hacen con un muro o una torre).
+        # un obstaculo permanente (muro, torre o la base).
+        # Las otras unidades NO se tratan como obstaculo para el BFS:
+        # se ignoran al calcular la ruta para que el pathfinding no se
+        # bloquee cuando varias unidades estan juntas. El paso real solo
+        # se ejecuta si la casilla destino esta realmente vacia (ver
+        # _unidades_avanzan).
         if not (0 <= fila < self.TAMANO_MAPA and 0 <= columna < self.TAMANO_MAPA):
             return False
         if fila == fila_base and columna == col_base:
             return False
         contenido = self.mapa[fila][columna]
-        return contenido in (self.VACIA, self.CAMINO, self.UNIDAD)
+        # MURO y TORRE son obstaculos permanentes; UNIDAD y VACIA y CAMINO
+        # se consideran libres para el calculo de la ruta
+        return contenido not in (self.MURO, self.TORRE)
 
     def _es_adyacente_a_base(self, fila, columna, fila_base, col_base):
         # Devuelve True si (fila, columna) esta justo al lado de la base
@@ -1103,6 +1107,12 @@ class VentanaTablero:
                     break
 
                 siguiente_fila, siguiente_col = ruta[0]
+
+                # Solo se mueve si la casilla destino esta realmente vacia
+                # (puede estar ocupada por otra unidad aunque el BFS la
+                # considerara transitable para calcular el camino)
+                if self.mapa[siguiente_fila][siguiente_col] not in (self.VACIA, self.CAMINO):
+                    break  # otra unidad bloquea el paso, espera al siguiente turno
 
                 # Se libera la casilla anterior
                 if self.mapa[unidad.fila][unidad.columna] == self.UNIDAD:
