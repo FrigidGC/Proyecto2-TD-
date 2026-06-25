@@ -207,6 +207,14 @@ class VentanaFacciones:
 # =============================================================
 # CLASE TORRE
 # =============================================================
+
+# Valor usado para representar un alcance "infinito" (la Torre Magica
+# puede atacar a cualquier unidad del tablero). Se usa un numero grande
+# pero finito en vez de float('inf') para evitar errores de comparacion
+# o de tipo en el resto del codigo (por ejemplo al dibujar o guardar datos).
+ALCANCE_INFINITO = 999
+
+
 class Torre:
     # Se representa una torre colocada en el tablero por el defensor.
     # Cada torre tiene un tipo ("Basica", "Pesada" o "Magica") que
@@ -218,7 +226,7 @@ class Torre:
             "costo": 50,
             "vida": 100,
             "dano": 10,
-            "alcance": 2,           # casillas de distancia a las que puede atacar
+            "alcance": 5,           # casillas de distancia a las que puede atacar
             "habilidad": "Ninguna",
             "turnos_habilidad": 0,  # 0 significa que no tiene habilidad especial
         },
@@ -226,7 +234,7 @@ class Torre:
             "costo": 120,
             "vida": 250,
             "dano": 25,
-            "alcance": 1,
+            "alcance": 4,
             "habilidad": "Disparo doble",
             "turnos_habilidad": 3,  # se puede usar cada 3 turnos
         },
@@ -234,7 +242,7 @@ class Torre:
             "costo": 90,
             "vida": 60,
             "dano": 5,
-            "alcance": 3,
+            "alcance": ALCANCE_INFINITO,  # "infinito": cubre cualquier punto del tablero
             "habilidad": "Congelar unidad",
             "turnos_habilidad": 4,  # se puede usar cada 4 turnos
         },
@@ -259,11 +267,18 @@ class Torre:
         self.turnos_habilidad = datos["turnos_habilidad"]
         self.turnos_restantes = 0  # cuantos turnos faltan para poder usar la habilidad de nuevo
 
+        # Guarda el ultimo golpe recibido para mostrarlo en pantalla como
+        # "vida_antes-dano" durante el turno en que ocurrio (ver dibujar_mapa).
+        # Se limpia al inicio de cada turno de combate (ver limpiar_indicadores_dano).
+        self.ultimo_dano = None
+
     def esta_viva(self):
         # Se devuelve True si la torre todavia tiene vida
         return self.vida > 0
 
     def recibir_dano(self, cantidad):
+        # Se guarda la vida antes del golpe para el indicador visual
+        self.ultimo_dano = (self.vida, cantidad)
         # Se resta la vida recibida, pero no puede bajar de 0
         self.vida = self.vida - cantidad
         if self.vida < 0:
@@ -273,13 +288,39 @@ class Torre:
         # La habilidad esta lista cuando el contador llega a 0
         return self.turnos_restantes <= 0
 
-    def activar_habilidad(self):
-        # Se intenta activar la habilidad. Si el cooldown no termino, no hace nada.
-        # El efecto real de cada habilidad se programa en la fase de combate.
+    def activar_habilidad(self, objetivo=None):
+        # Punto de entrada general para activar la habilidad de la torre.
+        # Reparte el trabajo al metodo especifico segun el tipo de torre.
+        # IMPORTANTE: este metodo todavia NO es llamado desde la fase de
+        # combate (ver _torres_atacan en VentanaTablero); solo queda
+        # preparada la logica para conectarla mas adelante.
         if not self.puede_usar_habilidad():
             return False
-        self.turnos_restantes = self.turnos_habilidad  # se reinicia el contador
+
+        if self.tipo == "Pesada":
+            self._habilidad_disparo_doble(objetivo)
+        elif self.tipo == "Magica":
+            self._habilidad_congelar(objetivo)
+        # La Torre Basica no tiene habilidad especial ("Ninguna")
+
+        self.turnos_restantes = self.turnos_habilidad  # se reinicia el cooldown
         return True
+
+    def _habilidad_disparo_doble(self, objetivo):
+        # Habilidad de la Torre Pesada: dispara dos veces al mismo
+        # objetivo en el mismo turno (el doble de dano total).
+        if objetivo is None:
+            return
+        objetivo.recibir_dano(self.dano)
+        objetivo.recibir_dano(self.dano)
+
+    def _habilidad_congelar(self, objetivo):
+        # Habilidad de la Torre Magica: ademas de hacer su dano normal,
+        # congela al objetivo para que no pueda avanzar en su proximo turno.
+        if objetivo is None:
+            return
+        objetivo.congelada = True
+        objetivo.recibir_dano(self.dano)
 
     def pasar_turno(self):
         # Se llama al final de cada turno para bajar el contador de la habilidad
@@ -307,11 +348,17 @@ class Muro:
         self.columna = columna
         self.vida    = self.VIDA_MAX
 
+        # Guarda el ultimo golpe recibido para mostrarlo en pantalla como
+        # "vida_antes-dano" durante el turno en que ocurrio.
+        self.ultimo_dano = None
+
     def esta_vivo(self):
         # Se devuelve True si el muro todavia tiene vida
         return self.vida > 0
 
     def recibir_dano(self, cantidad):
+        # Se guarda la vida antes del golpe para el indicador visual
+        self.ultimo_dano = (self.vida, cantidad)
         # Se resta vida al muro, pero no puede bajar de 0
         self.vida = self.vida - cantidad
         if self.vida < 0:
@@ -359,6 +406,7 @@ class VentanaTablero:
         self.ventana.title("Tablero de juego")
         self.ventana.resizable(False, False)
         self.vida_base = 200
+        self._ultimo_dano_base = None  # indicador "vida_antes-dano" de la base
         self.jugador_defensor = jugador_defensor  # nombre del jugador defensor
         self.jugador_atacante = jugador_atacante  # nombre del jugador atacante
 
@@ -686,16 +734,18 @@ class VentanaTablero:
 
     def ejecutar_combate(self):
         # Se ejecuta un turno completo de combate en este orden:
-        # 1. Las torres atacan a las unidades en su alcance (con habilidades)
-        # 2. Las unidades avanzan hacia la base
-        # 3. Las unidades atacan lo que tengan enfrente
-        # 4. Se eliminan las torres, muros y unidades destruidos
-        # 5. Se revisa si alguien gano la ronda
+        # 1. Se limpian los indicadores de dano del turno anterior
+        # 2. Las torres atacan a las unidades en su alcance (con habilidades)
+        # 3. Las unidades avanzan hacia la base
+        # 4. Las unidades atacan lo que tengan enfrente
+        # 5. Se eliminan las torres, muros y unidades destruidos
+        # 6. Se revisa si alguien gano la ronda
 
         self.turno_combate += 1
         self.label_turno.config(text=f"Turno: {self.turno_combate}")
         self._log(f"--- Turno {self.turno_combate} ---")
 
+        self._limpiar_indicadores_dano()
         self._torres_atacan()
         self._unidades_avanzan()
         self._unidades_atacan()
@@ -707,9 +757,28 @@ class VentanaTablero:
         self._revisar_victoria()
         self.dibujar_mapa()
 
+    def _limpiar_indicadores_dano(self):
+        # Borra el indicador "vida_antes-dano" del turno anterior en todas
+        # las piezas (torres, muros, unidades, base) antes de calcular los
+        # golpes de este nuevo turno. Asi el indicador solo se ve durante
+        # el turno en que ocurrio el golpe; al turno siguiente ya se
+        # muestra solo la vida resultante (a menos que reciba otro golpe).
+        self._ultimo_dano_base = None
+        for torre in self.torres:
+            torre.ultimo_dano = None
+        for muro in self.muros:
+            muro.ultimo_dano = None
+        for unidad in self.unidades:
+            unidad.ultimo_dano = None
+
     def _torres_atacan(self):
         # Cada torre busca la unidad mas cercana dentro de su alcance y le hace dano.
-        # Ademas, si la habilidad esta disponible, se activa.
+        #
+        # NOTA: la logica de habilidades de cada torre (Disparo doble de la
+        # Pesada, Congelar de la Magica) ya esta definida en la clase Torre
+        # (ver puede_usar_habilidad / activar_habilidad), pero todavia NO
+        # se ejecuta aqui. Se deja preparada para conectarla mas adelante;
+        # por ahora cada torre solo hace su ataque base normal.
         for torre in self.torres:
             if not torre.esta_viva():
                 continue
@@ -731,33 +800,119 @@ class VentanaTablero:
             en_alcance.sort(key=lambda x: x[0])
             objetivo = en_alcance[0][1]
 
-            # Habilidad especial segun el tipo de torre
-            if torre.puede_usar_habilidad():
-                if torre.tipo == "Pesada":
-                    # Disparo doble: ataca dos veces al mismo objetivo
-                    objetivo.recibir_dano(torre.dano)
-                    objetivo.recibir_dano(torre.dano)
-                    torre.activar_habilidad()
-                    self._log(f"Torre Pesada ({torre.fila},{torre.columna}): Disparo doble x{torre.dano*2}")
-                elif torre.tipo == "Magica":
-                    # Congelar: la unidad no se mueve el proximo turno
-                    objetivo.congelada = True
-                    objetivo.recibir_dano(torre.dano)
-                    torre.activar_habilidad()
-                    self._log(f"Torre Magica ({torre.fila},{torre.columna}): Congelando {objetivo.tipo}")
-                else:
-                    # Torre Basica no tiene habilidad especial relevante
-                    objetivo.recibir_dano(torre.dano)
-                    torre.activar_habilidad()
-            else:
-                objetivo.recibir_dano(torre.dano)
-                self._log(f"Torre {torre.tipo}: -{torre.dano} a {objetivo.tipo} (vida {objetivo.vida})")
+            # ------------------------------------------------------------
+            # Habilidades de torre (sin ejecutar todavia):
+            #
+            # if torre.puede_usar_habilidad():
+            #     if torre.tipo == "Pesada":
+            #         # Disparo doble: ataca dos veces al mismo objetivo
+            #         objetivo.recibir_dano(torre.dano)
+            #         objetivo.recibir_dano(torre.dano)
+            #         torre.activar_habilidad()
+            #         self._log(f"Torre Pesada ({torre.fila},{torre.columna}): Disparo doble x{torre.dano*2}")
+            #     elif torre.tipo == "Magica":
+            #         # Congelar: la unidad no se mueve el proximo turno
+            #         objetivo.congelada = True
+            #         objetivo.recibir_dano(torre.dano)
+            #         torre.activar_habilidad()
+            #         self._log(f"Torre Magica ({torre.fila},{torre.columna}): Congelando {objetivo.tipo}")
+            #     else:
+            #         objetivo.recibir_dano(torre.dano)
+            #         torre.activar_habilidad()
+            # else:
+            #     objetivo.recibir_dano(torre.dano)
+            # ------------------------------------------------------------
+
+            objetivo.recibir_dano(torre.dano)
+            self._log(f"Torre {torre.tipo}: -{torre.dano} a {objetivo.tipo} (vida {objetivo.vida})")
 
             torre.pasar_turno()
 
+    # ----------------------------------------------------------
+    # Pathfinding (BFS) para las unidades atacantes
+    # ----------------------------------------------------------
+
+    def _es_transitable(self, fila, columna, fila_base, col_base):
+        # Una casilla se puede pisar si esta dentro del mapa y no tiene
+        # un obstaculo permanente (muro, torre o la base). La base se
+        # trata como un obstaculo mas: las unidades nunca la pisan, se
+        # detienen en la casilla adyacente y la atacan desde ahi (igual
+        # que hacen con un muro o una torre).
+        if not (0 <= fila < self.TAMANO_MAPA and 0 <= columna < self.TAMANO_MAPA):
+            return False
+        if fila == fila_base and columna == col_base:
+            return False
+        contenido = self.mapa[fila][columna]
+        return contenido in (self.VACIA, self.CAMINO, self.UNIDAD)
+
+    def _es_adyacente_a_base(self, fila, columna, fila_base, col_base):
+        # Devuelve True si (fila, columna) esta justo al lado de la base
+        # (arriba, abajo, izquierda o derecha), sin contar la base misma.
+        distancia = abs(fila - fila_base) + abs(columna - col_base)
+        return distancia == 1
+
+    def _calcular_ruta(self, unidad):
+        # Busca, con BFS, el camino mas corto desde la posicion actual de
+        # la unidad hasta quedar JUNTO a la base (no encima de ella),
+        # evitando muros, torres y la base misma (rodeandolos si existe
+        # un camino libre alternativo).
+        # Devuelve una lista de pasos [(fila, col), (fila, col), ...] sin
+        # incluir la posicion inicial, o None si no hay ningun camino libre.
+        fila_base = self.TAMANO_MAPA - 1
+        col_base  = self.TAMANO_MAPA // 2
+
+        inicio = (unidad.fila, unidad.columna)
+
+        # Si ya esta pegada a la base, no necesita moverse mas: se queda
+        # ahi atacandola (ver _unidades_atacan).
+        if self._es_adyacente_a_base(unidad.fila, unidad.columna, fila_base, col_base):
+            return []
+
+        # Movimientos posibles: abajo, izquierda, derecha y arriba.
+        # Se prioriza "abajo" para que, entre caminos de igual longitud,
+        # la unidad prefiera avanzar hacia la base en vez de desviarse.
+        movimientos = [(1, 0), (0, -1), (0, 1), (-1, 0)]
+
+        visitados = {inicio}
+        cola = [(inicio, [])]
+        indice = 0
+
+        while indice < len(cola):
+            (fila_actual, col_actual), camino = cola[indice]
+            indice += 1
+
+            for d_fila, d_col in movimientos:
+                siguiente = (fila_actual + d_fila, col_actual + d_col)
+
+                if siguiente in visitados:
+                    continue
+
+                f_sig, c_sig = siguiente
+                if not self._es_transitable(f_sig, c_sig, fila_base, col_base):
+                    continue
+
+                nuevo_camino = camino + [siguiente]
+
+                # Llegar a una casilla adyacente a la base es el objetivo:
+                # ahi se detiene, sin pisarla nunca.
+                if self._es_adyacente_a_base(f_sig, c_sig, fila_base, col_base):
+                    return nuevo_camino
+
+                visitados.add(siguiente)
+                cola.append((siguiente, nuevo_camino))
+
+        # No se encontro ningun camino libre hasta quedar junto a la base
+
+        return None
+
     def _unidades_avanzan(self):
-        # Cada unidad avanza hacia abajo (fila mayor = mas cerca de la base).
-        # Las unidades con velocidad 2 intentan dos pasos.
+        # Cada unidad busca, con pathfinding (BFS), el camino mas corto
+        # hasta quedar JUNTO a la base (rodeando muros y torres si hay un
+        # camino libre), sin pisarla nunca. Si no existe ningun camino
+        # libre (esta completamente bloqueada por muros/torres), la unidad
+        # se queda en su lugar y atacara el obstaculo que tenga enfrente
+        # en la fase de ataque.
+        # Las unidades con velocidad 2 intentan dos pasos por turno.
         # Una unidad congelada no se mueve ese turno.
         fila_base = self.TAMANO_MAPA - 1
         col_base  = self.TAMANO_MAPA // 2
@@ -774,93 +929,115 @@ class VentanaTablero:
 
             pasos = unidad.velocidad
             for _ in range(pasos):
-                nueva_fila = unidad.fila + 1
-
-                if nueva_fila > fila_base:
-                    break  # ya esta en la ultima fila o mas alla
-
-                # Si es la casilla de la base, la unidad llego
-                if nueva_fila == fila_base and unidad.columna == col_base:
-                    self.mapa[unidad.fila][unidad.columna] = self.VACIA
-                    unidad.fila = fila_base
-                    self._log(f"{unidad.tipo} LLEGO a la base!")
+                # Si ya esta junto a la base, no sigue avanzando: se queda
+                # ahi atacandola (la base nunca se pisa).
+                if self._es_adyacente_a_base(unidad.fila, unidad.columna, fila_base, col_base):
                     break
 
-                contenido = self.mapa[nueva_fila][unidad.columna]
+                ruta = self._calcular_ruta(unidad)
 
-                # Si hay obstaculo (muro o torre), la unidad se detiene ahi
-                if contenido == self.MURO or contenido == self.TORRE:
+                # Sin camino libre: la unidad queda bloqueada (se quedara
+                # atacando el obstaculo que tenga delante en _unidades_atacan)
+                if not ruta:
                     break
 
-                # Si la casilla esta libre o es camino, se mueve
-                if contenido == self.VACIA or contenido == self.CAMINO:
-                    self.mapa[unidad.fila][unidad.columna] = self.VACIA
-                    unidad.fila = nueva_fila
-                    self.mapa[unidad.fila][unidad.columna] = self.UNIDAD
-                else:
-                    break  # otro tipo de casilla ocupada, no se mueve
+                siguiente_fila, siguiente_col = ruta[0]
 
-            # Asegurarse de que la posicion quede marcada correctamente
-            if 0 <= unidad.fila < self.TAMANO_MAPA:
-                if self.mapa[unidad.fila][unidad.columna] != self.BASE:
-                    self.mapa[unidad.fila][unidad.columna] = self.UNIDAD
+                # Se libera la casilla anterior
+                if self.mapa[unidad.fila][unidad.columna] == self.UNIDAD:
+                    self.mapa[unidad.fila][unidad.columna] = self.VACIA
+
+                unidad.fila    = siguiente_fila
+                unidad.columna = siguiente_col
+
+                self.mapa[unidad.fila][unidad.columna] = self.UNIDAD
+
+                if self._es_adyacente_a_base(unidad.fila, unidad.columna, fila_base, col_base):
+                    self._log(f"{unidad.tipo} llego junto a la base")
+                    break
 
             unidad.pasar_turno()
 
     def _unidades_atacan(self):
-        # Cada unidad ataca lo que tenga en la casilla inmediatamente abajo.
-        # Si la unidad esta en la misma fila que la base y misma columna, ataca la base.
-        fila_base = self.TAMANO_MAPA - 1
-        col_base  = self.TAMANO_MAPA // 2
-
+        # Cada unidad ataca el obstaculo que le este bloqueando el paso:
+        # un muro, una torre, o la base (cuando esta justo al lado, sin
+        # pisarla nunca). Como el movimiento usa pathfinding (BFS) y puede
+        # rodear obstaculos, una unidad solo ataca cuando esta realmente
+        # bloqueada (ruta == None) o cuando ya llego junto a la base
+        # (ruta == [], es decir, ya no necesita moverse mas).
         for unidad in self.unidades:
             if not unidad.esta_viva():
                 continue
 
-            # Si la unidad esta en la fila de la base (llego), ataca la base directamente
-            if unidad.fila == fila_base and unidad.columna == col_base:
-                self.vida_base -= unidad.dano
-                self._log(f"{unidad.tipo}: ataca BASE -{unidad.dano} (base={max(self.vida_base,0)})")
+            ruta = self._calcular_ruta(unidad)
+
+            # Si todavia hay pasos pendientes en la ruta, la unidad no esta
+            # bloqueada ni junto a la base: sigue avanzando, no ataca.
+            if ruta:
                 continue
 
-            fila_objetivo = unidad.fila + 1
-            if fila_objetivo >= self.TAMANO_MAPA:
-                continue
+            objetivo = self._buscar_obstaculo_adyacente(unidad)
+            if objetivo is None:
+                continue  # no hay nada que atacar (caso raro/borde)
 
-            contenido = self.mapa[fila_objetivo][unidad.columna]
+            tipo_objetivo, fila_objetivo, col_objetivo = objetivo
 
             dano_base = unidad.dano
 
-            # Habilidad especial del Soldado: Ataque doble si esta disponible
-            multiplicador = 1
-            if unidad.tipo == "Soldado" and unidad.puede_usar_habilidad():
-                multiplicador = 2
-                unidad.activar_habilidad()
-                self._log(f"Soldado: Ataque doble activado!")
+            # ------------------------------------------------------------
+            # NOTA: la logica de habilidades de las unidades (Soldado,
+            # Tanque, Rapida) ya esta definida en la clase Unidad
+            # (ver puede_usar_habilidad / activar_habilidad), pero todavia
+            # NO se ejecuta aqui. Se deja preparada para conectarla mas
+            # adelante; por ahora el dano siempre es el dano base sin
+            # multiplicadores ni efectos especiales.
+            # ------------------------------------------------------------
+            # multiplicador = 1
+            # if unidad.tipo == "Soldado" and unidad.puede_usar_habilidad():
+            #     multiplicador = 2
+            #     unidad.activar_habilidad()
+            #     self._log(f"Soldado: Ataque doble activado!")
+            #
+            # if unidad.tipo == "Tanque" and unidad.puede_usar_habilidad():
+            #     if unidad.vida < unidad.vida_max * 0.5:
+            #         unidad.activar_habilidad()  # esto pone escudo_activo = True
+            #         self._log(f"Tanque: Escudo activado!")
 
-            # Habilidad del Tanque: activa escudo si esta disponible y tiene poca vida
-            if unidad.tipo == "Tanque" and unidad.puede_usar_habilidad():
-                if unidad.vida < unidad.vida_max * 0.5:
-                    unidad.activar_habilidad()  # esto pone escudo_activo = True
-                    self._log(f"Tanque: Escudo activado!")
+            dano_total = dano_base
 
-            dano_total = dano_base * multiplicador
-
-            if contenido == self.MURO:
-                muro = self._muro_en(fila_objetivo, unidad.columna)
+            if tipo_objetivo == self.MURO:
+                muro = self._muro_en(fila_objetivo, col_objetivo)
                 if muro:
                     muro.recibir_dano(dano_total)
                     self._log(f"{unidad.tipo}: ataca muro -{dano_total} (muro vida={muro.vida})")
 
-            elif contenido == self.TORRE:
-                torre = self._torre_en(fila_objetivo, unidad.columna)
+            elif tipo_objetivo == self.TORRE:
+                torre = self._torre_en(fila_objetivo, col_objetivo)
                 if torre:
                     torre.recibir_dano(dano_total)
                     self._log(f"{unidad.tipo}: ataca Torre {torre.tipo} -{dano_total} (torre vida={torre.vida})")
 
-            elif contenido == self.BASE:
+            elif tipo_objetivo == self.BASE:
+                self._ultimo_dano_base = (max(self.vida_base, 0), dano_total)
                 self.vida_base -= dano_total
                 self._log(f"{unidad.tipo}: ataca BASE -{dano_total} (base={max(self.vida_base,0)})")
+
+    def _buscar_obstaculo_adyacente(self, unidad):
+        # Revisa las 4 casillas adyacentes a la unidad (en el orden
+        # abajo, izquierda, derecha, arriba) y devuelve la primera que
+        # tenga un muro, una torre o la base, como (tipo_casilla, fila, columna).
+        # Devuelve None si no hay ningun obstaculo adyacente.
+        movimientos = [(1, 0), (0, -1), (0, 1), (-1, 0)]
+
+        for d_fila, d_col in movimientos:
+            f = unidad.fila + d_fila
+            c = unidad.columna + d_col
+            if not (0 <= f < self.TAMANO_MAPA and 0 <= c < self.TAMANO_MAPA):
+                continue
+            contenido = self.mapa[f][c]
+            if contenido in (self.MURO, self.TORRE, self.BASE):
+                return (contenido, f, c)
+        return None
 
     def _limpiar_muertos(self):
         # Se eliminan de las listas y del mapa los muros, torres y unidades destruidos.
@@ -932,25 +1109,69 @@ class VentanaTablero:
                 self.canvas.create_rectangle(x1, y1, x2, y2,
                                              fill=color, outline=self.COLOR_GRID)
 
-                # Si la casilla tiene una torre, se dibuja la inicial de su tipo
+                cx = x1 + self.TAMANO_CASILLA // 2
+                cy = y1 + self.TAMANO_CASILLA // 2
+
+                # Si la casilla tiene una torre, se dibuja la inicial de su
+                # tipo y, debajo, su indicador de vida
                 if valor == self.TORRE:
                     torre = self._torre_en(fila, columna)
                     if torre:
                         inicial = torre.tipo[0]  # "B" = Basica, "P" = Pesada, "M" = Magica
-                        cx = x1 + self.TAMANO_CASILLA // 2
-                        cy = y1 + self.TAMANO_CASILLA // 2
-                        self.canvas.create_text(cx, cy, text=inicial,
+                        self.canvas.create_text(cx, cy - 7, text=inicial,
                                                 fill="white", font=("Arial", 10, "bold"))
+                        self._dibujar_indicador_vida(torre, cx, cy + 9)
 
-                # Si la casilla tiene una unidad, se dibuja la inicial de su tipo
-                if valor == self.UNIDAD:
+                # Si la casilla tiene un muro, se dibuja su indicador de vida
+                elif valor == self.MURO:
+                    muro = self._muro_en(fila, columna)
+                    if muro:
+                        self._dibujar_indicador_vida(muro, cx, cy)
+
+                # Si la casilla tiene una unidad, se dibuja la inicial de su
+                # tipo y, debajo, su indicador de vida
+                elif valor == self.UNIDAD:
                     unidad = self._unidad_en(fila, columna)
                     if unidad:
                         inicial = unidad.tipo[0]  # "S" = Soldado, "T" = Tanque, "R" = Rapida
-                        cx = x1 + self.TAMANO_CASILLA // 2
-                        cy = y1 + self.TAMANO_CASILLA // 2
-                        self.canvas.create_text(cx, cy, text=inicial,
+                        self.canvas.create_text(cx, cy - 7, text=inicial,
                                                 fill="white", font=("Arial", 10, "bold"))
+                        self._dibujar_indicador_vida(unidad, cx, cy + 9)
+
+                # La base tambien muestra su indicador de vida, igual que
+                # el resto de piezas (vida_antes-dano en el turno del golpe)
+                elif valor == self.BASE:
+                    self._dibujar_indicador_vida_base(cx, cy)
+
+    def _dibujar_indicador_vida(self, pieza, cx, cy):
+        # Dibuja el texto de vida de una pieza (torre, muro o unidad).
+        # Si recibio un golpe en el turno actual, se muestra como
+        # "vida_antes-dano" (ej. "70-20"); en el siguiente turno, al
+        # limpiarse el indicador, se muestra solo la vida actual (ej. "50").
+        if getattr(pieza, "ultimo_dano", None):
+            vida_antes, dano = pieza.ultimo_dano
+            texto = f"{vida_antes}-{dano}"
+            color_texto = "yellow"
+        else:
+            texto = str(pieza.vida)
+            color_texto = "white"
+
+        self.canvas.create_text(cx, cy, text=texto,
+                                fill=color_texto, font=("Arial", 8, "bold"))
+
+    def _dibujar_indicador_vida_base(self, cx, cy):
+        # Igual que _dibujar_indicador_vida, pero para la base, que no es
+        # un objeto propio sino un simple contador (self.vida_base).
+        if getattr(self, "_ultimo_dano_base", None):
+            vida_antes, dano = self._ultimo_dano_base
+            texto = f"{vida_antes}-{dano}"
+            color_texto = "yellow"
+        else:
+            texto = str(max(self.vida_base, 0))
+            color_texto = "black"
+
+        self.canvas.create_text(cx, cy, text=texto,
+                                fill=color_texto, font=("Arial", 8, "bold"))
 
     def _torre_en(self, fila, columna):
         # Se recorre la lista de torres y se devuelve la que este en esa posicion.
@@ -1017,6 +1238,12 @@ class Unidad:
         self.esquivo = False        # usado por la Rapida
         self.congelada = False      # puesto por la Torre Magica
 
+        # Guarda el ultimo golpe recibido para mostrarlo en pantalla como
+        # "vida_antes-dano" durante el turno en que ocurrio. Solo se llena
+        # cuando el dano realmente se aplica (no si lo absorbe un escudo
+        # o lo evita un esquivo).
+        self.ultimo_dano = None
+
     # ----------------------------------------------------------
     # Funciones de vida
     # ----------------------------------------------------------
@@ -1034,14 +1261,20 @@ class Unidad:
         if self.esquivo:
             self.esquivo = False
             return
+        # Se guarda la vida antes del golpe para el indicador visual
+        self.ultimo_dano = (self.vida, cantidad)
         self.vida = self.vida - cantidad
         if self.vida < 0:
             self.vida = 0
 
-    def mover(self, nueva_fila):
+    def mover(self, nueva_fila, nueva_columna=None):
         # Se actualiza la posicion de la unidad en el mapa.
-        # Las unidades se mueven siempre hacia abajo (hacia la base).
+        # Con el pathfinding (BFS), la unidad puede desplazarse tanto en
+        # fila como en columna para rodear obstaculos, por eso este metodo
+        # acepta tambien una nueva columna (opcional, por compatibilidad).
         self.fila = nueva_fila
+        if nueva_columna is not None:
+            self.columna = nueva_columna
 
     # ----------------------------------------------------------
     # Funciones de habilidad
@@ -1052,23 +1285,39 @@ class Unidad:
         return self.turnos_restantes <= 0
 
     def activar_habilidad(self):
-        # Se activa la habilidad del tipo correspondiente.
-        # Cada habilidad tiene su propio efecto.
+        # Punto de entrada general para activar la habilidad de la unidad.
+        # Reparte el trabajo al metodo especifico segun el tipo de unidad.
+        # IMPORTANTE: este metodo todavia NO es llamado desde la fase de
+        # combate (ver _unidades_atacan en VentanaTablero); solo queda
+        # preparada la logica para conectarla mas adelante.
         if not self.puede_usar_habilidad():
             return False
 
         if self.tipo == "Soldado":
-            # Ataque doble: el efecto se aplica en la fase de combate
-            pass
+            self._habilidad_ataque_doble()
         elif self.tipo == "Tanque":
-            # Escudo temporal: absorbe el proximo golpe
-            self.escudo_activo = True
+            self._habilidad_escudo()
         elif self.tipo == "Rapida":
-            # Esquivo: permite esquivar el proximo ataque
-            self.esquivo = True
+            self._habilidad_esquivo()
 
         self.turnos_restantes = self.turnos_habilidad  # se reinicia el cooldown
         return True
+
+    def _habilidad_ataque_doble(self):
+        # Habilidad del Soldado: el siguiente ataque hace el doble de dano.
+        # El multiplicador real se aplica en la fase de combate, al
+        # calcular el dano_total del ataque (todavia no conectado).
+        pass
+
+    def _habilidad_escudo(self):
+        # Habilidad del Tanque: activa un escudo que absorbe por
+        # completo el proximo golpe que reciba la unidad.
+        self.escudo_activo = True
+
+    def _habilidad_esquivo(self):
+        # Habilidad de la Rapida: le permite esquivar por completo
+        # el proximo ataque que reciba.
+        self.esquivo = True
 
     def pasar_turno(self):
         # Se llama al final de cada turno para bajar el contador de la habilidad
