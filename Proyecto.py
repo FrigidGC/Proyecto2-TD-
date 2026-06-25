@@ -292,6 +292,36 @@ class Torre:
 
 
 # =============================================================
+# CLASE MURO
+# =============================================================
+class Muro:
+    # Se representa un muro colocado en el tablero por el defensor.
+    # Es mas sencillo que una torre: solo tiene vida y costo.
+    # Su funcion es bloquear el paso de las unidades atacantes.
+
+    COSTO    = 10  # precio para construir un muro
+    VIDA_MAX = 50  # vida inicial de cada muro
+
+    def __init__(self, fila, columna):
+        self.fila    = fila     # posicion en la matriz del mapa
+        self.columna = columna
+        self.vida    = self.VIDA_MAX
+
+    def esta_vivo(self):
+        # Se devuelve True si el muro todavia tiene vida
+        return self.vida > 0
+
+    def recibir_dano(self, cantidad):
+        # Se resta vida al muro, pero no puede bajar de 0
+        self.vida = self.vida - cantidad
+        if self.vida < 0:
+            self.vida = 0
+
+    def __repr__(self):
+        return f"Muro(fila={self.fila}, col={self.columna}, vida={self.vida})"
+
+
+# =============================================================
 # VENTANA DEL TABLERO
 # =============================================================
 class VentanaTablero:
@@ -334,6 +364,13 @@ class VentanaTablero:
 
         # Lista donde se van guardando los objetos Torre que se colocan
         self.torres = []
+
+        # Lista donde se van guardando los objetos Muro que se colocan
+        self.muros = []
+
+        # Fase actual: "construccion" (defensor) o "ataque" (atacante)
+        # Por ahora solo existe la fase de construccion
+        self.fase = "construccion"
 
         # Dinero actual del defensor, empieza con el valor inicial
         self.dinero = self.DINERO_INICIAL
@@ -415,11 +452,30 @@ class VentanaTablero:
         tk.Label(panel, text="\nHaz click en una\ncasilla gris\npara construir",
                  font=("Arial", 8), fg="#777777", justify="center").pack(pady=(10, 0))
 
+        tk.Label(panel, text="").pack()  # espacio visual
+
+        # Boton para que el defensor termine su fase y ceda el turno al atacante
+        self.boton_terminar = tk.Button(
+            panel, text="Terminar\nconstruccion",
+            font=("Arial", 9, "bold"), fg="white", bg="#cc4444",
+            width=14, command=self.terminar_construccion
+        )
+        self.boton_terminar.pack(pady=(4, 0))
+
+        # Label que muestra en que fase estamos (construccion o ataque)
+        self.label_fase = tk.Label(panel, text="Fase: Construccion",
+                                   font=("Arial", 8), fg="#444444")
+        self.label_fase.pack(pady=(6, 0))
+
     # ----------------------------------------------------------
     # Interaccion con el mapa
     # ----------------------------------------------------------
 
     def al_hacer_click(self, evento):
+        # Solo se puede construir durante la fase de construccion
+        if self.fase != "construccion":
+            return
+
         # Se convierte la posicion del click (en pixeles) a fila y columna
         # de la matriz, dividiendo entre el tamano de cada cuadrito
         columna = evento.x // self.TAMANO_CASILLA
@@ -436,15 +492,16 @@ class VentanaTablero:
         construccion = self.seleccion.get()  # que eligio el jugador en el panel
 
         if construccion == "Muro":
-            costo = 10
-            if self.dinero < costo:
+            if self.dinero < Muro.COSTO:
                 messagebox.showwarning("Sin dinero",
                                        "No tienes dinero suficiente para un muro.",
                                        parent=self.ventana)
                 return
-            # Se marca la casilla como muro en la matriz
+            # Se crea el objeto Muro y se guarda en la lista
+            nuevo_muro = Muro(fila, columna)
+            self.muros.append(nuevo_muro)
             self.mapa[fila][columna] = self.MURO
-            self.dinero -= costo
+            self.dinero -= Muro.COSTO
 
         else:
             # Se obtiene el costo de la torre elegida desde su propio diccionario
@@ -457,13 +514,39 @@ class VentanaTablero:
             # Se crea el objeto Torre y se agrega a la lista de torres activas
             nueva_torre = Torre(construccion, fila, columna)
             self.torres.append(nueva_torre)
-            # Se marca la casilla como torre en la matriz
             self.mapa[fila][columna] = self.TORRE
             self.dinero -= costo
 
         # Se actualiza el label del dinero y se redibuja el mapa con el cambio
         self.label_dinero.config(text=f"Dinero: ${self.dinero}")
         self.dibujar_mapa()
+
+    def terminar_construccion(self):
+        # Se le pide confirmacion al defensor antes de ceder el turno
+        confirmar = messagebox.askyesno(
+            "Terminar construccion",
+            f"Torres colocadas: {len(self.torres)}\n"
+            f"Muros colocados: {len(self.muros)}\n"
+            f"Dinero restante: ${self.dinero}\n\n"
+            "¿Terminar la fase de construccion y pasar al atacante?",
+            parent=self.ventana
+        )
+        if not confirmar:
+            return
+
+        # Se cambia la fase a ataque y se bloquea el tablero para el defensor
+        self.fase = "ataque"
+        self.boton_terminar.config(state="disabled")
+        self.label_fase.config(text="Fase: Ataque", fg="#cc4444")
+
+        # Se muestra un aviso para que el atacante tome el control
+        messagebox.showinfo(
+            "Turno del atacante",
+            "La fase de construccion termino.\n"
+            "Es el turno del atacante.\n\n"
+            "(La fase de ataque se implementara en el proximo avance.)",
+            parent=self.ventana
+        )
 
     # ----------------------------------------------------------
     # Dibujo del mapa
@@ -505,6 +588,110 @@ class VentanaTablero:
             if torre.fila == fila and torre.columna == columna:
                 return torre
         return None
+# =============================================================
+# Tropas/Unidades enemigas
+# =============================================================
+class Unidad:
+    TIPOS_UNIDAD ={
+    "Soldado":{
+        "costo": 30,
+        "vida": 80,
+        "dano": 10,
+        "velocidad":1,
+        "habilidad": "Ataque doble",
+        "turnos_habilidad": 3   
+        },
+    "Tanque":{
+        "costo": 100,
+        "vida": 300,
+        "dano": 20,
+        "velocidad":1,
+        "habilidad": "Escudo temporal",
+        "turnos_habilidad": 2   
+        },
+    "Rapida":{
+        "costo": 70,
+        "vida": 70,
+        "dano": 30,
+        "velocidad":2,
+        "habilidad": "Esquivo",
+        "turnos_habilidad": 3   
+        },
+    }
+    def __init__(self, tipo, fila, columna):
+        if tipo not in self.TIPOS_UNIDAD:
+            raise ValueError(f"Tipo de unidad desconocido: {tipo}")
+        
+        datos = self.TIPOS_UNIDAD[tipo]
+        self.tipo = tipo
+        self.fila = fila
+        self.columna = columna
+
+        self.vida = datos["vida"]
+        self.vida_max = datos["vida"]
+        self.dano = datos["dano"]
+        self.velocidad = datos["velocidad"]
+        self.habilidad = datos["habilidad"]
+        self.turnos_habilidad = datos["turnos_habilidad"]
+        self.turnos.restantes = 0 #cuenta regresiva para la habilidad, inicia utilizando la habilidad, luego se igualara al numero de turnos_habilidad para posteriormente decrecer 1 por turno
+
+        # Estados de habilidad
+        self.escudo_activo = False
+        self.esquivo = False
+
+#Funciones de vida
+    def esta_viva(self):
+        # Se devuelve True si la unidad todavia tiene vida
+        return self.vida > 0
+
+    def recibir_dano(self, cantidad):
+        # Si el escudo esta activo, se absorbe el dano y se desactiva
+        if self.escudo_activo:
+            self.escudo_activo = False
+            return  # el dano no pasa
+        self.vida = self.vida - cantidad
+        if self.vida < 0:
+            self.vida = 0
+
+    def mover(self, nueva_fila):
+        # Se actualiza la posicion de la unidad en el mapa.
+        # Las unidades se mueven siempre hacia abajo (hacia la base).
+        self.fila = nueva_fila
+
+#Funciones de habilidad
+    def puede_usar_habilidad(self):
+        # La habilidad esta lista cuando el contador llega a 0
+        return self.turnos_restantes <= 0
+
+    def activar_habilidad(self):
+        # Se activa la habilidad del tipo correspondiente.
+        # Cada habilidad tiene su propio efecto.
+        if not self.puede_usar_habilidad():
+            return False
+
+        if self.tipo == "Soldado":
+            # Ataque doble: el efecto se aplica en la fase de combate
+            pass
+        elif self.tipo == "Tanque":
+            # Escudo temporal: absorbe el proximo golpe
+            self.escudo_activo = True
+        elif self.tipo == "Esquivo":
+            # Aumento de velocidad: el efecto se aplica en la fase de combate
+            self.esquivo = True
+
+        self.turnos_restantes = self.turnos_habilidad  # se reinicia el cooldown
+        return True
+
+    def pasar_turno(self):
+        # Se llama al final de cada turno para bajar el contador de la habilidad
+        if self.turnos_restantes > 0:
+            self.turnos_restantes -= 1
+
+    def __repr__(self):
+        # Se usa para imprimir la unidad de forma legible (util para depurar)
+        return f"Unidad({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
+    
+
 
 
 # =============================================================
