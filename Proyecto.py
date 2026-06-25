@@ -613,9 +613,9 @@ class Unidad:
         "costo": 70,
         "vida": 70,
         "dano": 30,
-        "velocidad":2,
-        "habilidad": "Esquivo",
-        "turnos_habilidad": 3   
+        "velocidad": 2,
+        "habilidad": "Esquivo",  # esquiva el proximo ataque que reciba
+        "turnos_habilidad": 3
         },
     }
     def __init__(self, tipo, fila, columna):
@@ -633,22 +633,29 @@ class Unidad:
         self.velocidad = datos["velocidad"]
         self.habilidad = datos["habilidad"]
         self.turnos_habilidad = datos["turnos_habilidad"]
-        self.turnos.restantes = 0 #cuenta regresiva para la habilidad, inicia utilizando la habilidad, luego se igualara al numero de turnos_habilidad para posteriormente decrecer 1 por turno
+        self.turnos_restantes = 0  # cuenta regresiva para la habilidad
 
-        # Estados de habilidad
-        self.escudo_activo = False
-        self.esquivo = False
+        # Estados especiales de habilidad
+        self.escudo_activo = False  # usado por el Tanque
+        self.esquivo = False        # usado por la Rapida
 
-#Funciones de vida
+    # ----------------------------------------------------------
+    # Funciones de vida
+    # ----------------------------------------------------------
+
     def esta_viva(self):
         # Se devuelve True si la unidad todavia tiene vida
         return self.vida > 0
 
     def recibir_dano(self, cantidad):
-        # Si el escudo esta activo, se absorbe el dano y se desactiva
+        # Si el escudo esta activo, absorbe el dano y se desactiva
         if self.escudo_activo:
             self.escudo_activo = False
-            return  # el dano no pasa
+            return
+        # Si el esquivo esta activo, el ataque falla y se desactiva
+        if self.esquivo:
+            self.esquivo = False
+            return
         self.vida = self.vida - cantidad
         if self.vida < 0:
             self.vida = 0
@@ -658,7 +665,10 @@ class Unidad:
         # Las unidades se mueven siempre hacia abajo (hacia la base).
         self.fila = nueva_fila
 
-#Funciones de habilidad
+    # ----------------------------------------------------------
+    # Funciones de habilidad
+    # ----------------------------------------------------------
+
     def puede_usar_habilidad(self):
         # La habilidad esta lista cuando el contador llega a 0
         return self.turnos_restantes <= 0
@@ -675,8 +685,8 @@ class Unidad:
         elif self.tipo == "Tanque":
             # Escudo temporal: absorbe el proximo golpe
             self.escudo_activo = True
-        elif self.tipo == "Esquivo":
-            # Aumento de velocidad: el efecto se aplica en la fase de combate
+        elif self.tipo == "Rapida":
+            # Esquivo: permite esquivar el proximo ataque
             self.esquivo = True
 
         self.turnos_restantes = self.turnos_habilidad  # se reinicia el cooldown
