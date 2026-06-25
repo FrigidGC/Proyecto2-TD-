@@ -371,6 +371,151 @@ class Muro:
 # =============================================================
 # VENTANA DEL TABLERO
 # =============================================================
+# Tropas/Unidades enemigas
+# =============================================================
+class Unidad:
+    TIPOS_UNIDAD ={
+    "Soldado":{
+        "costo": 30,
+        "vida": 80,
+        "dano": 10,
+        "velocidad":1,
+        "habilidad": "Ataque doble",
+        "turnos_habilidad": 3   
+        },
+    "Tanque":{
+        "costo": 100,
+        "vida": 300,
+        "dano": 20,
+        "velocidad":1,
+        "habilidad": "Escudo temporal",
+        "turnos_habilidad": 2   
+        },
+    "Rapida":{
+        "costo": 70,
+        "vida": 70,
+        "dano": 30,
+        "velocidad": 2,
+        "habilidad": "Esquivo",  # esquiva el proximo ataque que reciba
+        "turnos_habilidad": 3
+        },
+    }
+    def __init__(self, tipo, fila, columna):
+        if tipo not in self.TIPOS_UNIDAD:
+            raise ValueError(f"Tipo de unidad desconocido: {tipo}")
+        
+        datos = self.TIPOS_UNIDAD[tipo]
+        self.tipo = tipo
+        self.fila = fila
+        self.columna = columna
+
+        self.vida = datos["vida"]
+        self.vida_max = datos["vida"]
+        self.dano = datos["dano"]
+        self.velocidad = datos["velocidad"]
+        self.habilidad = datos["habilidad"]
+        self.turnos_habilidad = datos["turnos_habilidad"]
+        self.turnos_restantes = 0  # cuenta regresiva para la habilidad
+
+        # Estados especiales de habilidad
+        self.escudo_activo = False  # usado por el Tanque
+        self.esquivo = False        # usado por la Rapida
+        self.congelada = False      # puesto por la Torre Magica
+
+        # Guarda el ultimo golpe recibido para mostrarlo en pantalla como
+        # "vida_antes-dano" durante el turno en que ocurrio. Solo se llena
+        # cuando el dano realmente se aplica (no si lo absorbe un escudo
+        # o lo evita un esquivo).
+        self.ultimo_dano = None
+
+    # ----------------------------------------------------------
+    # Funciones de vida
+    # ----------------------------------------------------------
+
+    def esta_viva(self):
+        # Se devuelve True si la unidad todavia tiene vida
+        return self.vida > 0
+
+    def recibir_dano(self, cantidad):
+        # Si el escudo esta activo, absorbe el dano y se desactiva
+        if self.escudo_activo:
+            self.escudo_activo = False
+            return
+        # Si el esquivo esta activo, el ataque falla y se desactiva
+        if self.esquivo:
+            self.esquivo = False
+            return
+        # Se guarda la vida antes del golpe para el indicador visual
+        self.ultimo_dano = (self.vida, cantidad)
+        self.vida = self.vida - cantidad
+        if self.vida < 0:
+            self.vida = 0
+
+    def mover(self, nueva_fila, nueva_columna=None):
+        # Se actualiza la posicion de la unidad en el mapa.
+        # Con el pathfinding (BFS), la unidad puede desplazarse tanto en
+        # fila como en columna para rodear obstaculos, por eso este metodo
+        # acepta tambien una nueva columna (opcional, por compatibilidad).
+        self.fila = nueva_fila
+        if nueva_columna is not None:
+            self.columna = nueva_columna
+
+    # ----------------------------------------------------------
+    # Funciones de habilidad
+    # ----------------------------------------------------------
+
+    def puede_usar_habilidad(self):
+        # La habilidad esta lista cuando el contador llega a 0
+        return self.turnos_restantes <= 0
+
+    def activar_habilidad(self):
+        # Punto de entrada general para activar la habilidad de la unidad.
+        # Reparte el trabajo al metodo especifico segun el tipo de unidad.
+        # IMPORTANTE: este metodo todavia NO es llamado desde la fase de
+        # combate (ver _unidades_atacan en VentanaTablero); solo queda
+        # preparada la logica para conectarla mas adelante.
+        if not self.puede_usar_habilidad():
+            return False
+
+        if self.tipo == "Soldado":
+            self._habilidad_ataque_doble()
+        elif self.tipo == "Tanque":
+            self._habilidad_escudo()
+        elif self.tipo == "Rapida":
+            self._habilidad_esquivo()
+
+        self.turnos_restantes = self.turnos_habilidad  # se reinicia el cooldown
+        return True
+
+    def _habilidad_ataque_doble(self):
+        # Habilidad del Soldado: el siguiente ataque hace el doble de dano.
+        # El multiplicador real se aplica en la fase de combate, al
+        # calcular el dano_total del ataque (todavia no conectado).
+        pass
+
+    def _habilidad_escudo(self):
+        # Habilidad del Tanque: activa un escudo que absorbe por
+        # completo el proximo golpe que reciba la unidad.
+        self.escudo_activo = True
+
+    def _habilidad_esquivo(self):
+        # Habilidad de la Rapida: le permite esquivar por completo
+        # el proximo ataque que reciba.
+        self.esquivo = True
+
+    def pasar_turno(self):
+        # Se llama al final de cada turno para bajar el contador de la habilidad
+        if self.turnos_restantes > 0:
+            self.turnos_restantes -= 1
+
+    def __repr__(self):
+        # Se usa para imprimir la unidad de forma legible (util para depurar)
+        return f"Unidad({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
+    
+
+
+
+# =============================================================
 class VentanaTablero:
     # Se muestra el tablero de juego: una cuadricula de colores que
     # representa la matriz del mapa, mas un panel lateral donde el
@@ -796,35 +941,19 @@ class VentanaTablero:
                 torre.pasar_turno()
                 continue
 
-            # Se ataca la unidad mas cercana
+            # Se ataca la unidad mas cercana; si la habilidad esta lista se usa
             en_alcance.sort(key=lambda x: x[0])
             objetivo = en_alcance[0][1]
 
-            # ------------------------------------------------------------
-            # Habilidades de torre (sin ejecutar todavia):
-            #
-            # if torre.puede_usar_habilidad():
-            #     if torre.tipo == "Pesada":
-            #         # Disparo doble: ataca dos veces al mismo objetivo
-            #         objetivo.recibir_dano(torre.dano)
-            #         objetivo.recibir_dano(torre.dano)
-            #         torre.activar_habilidad()
-            #         self._log(f"Torre Pesada ({torre.fila},{torre.columna}): Disparo doble x{torre.dano*2}")
-            #     elif torre.tipo == "Magica":
-            #         # Congelar: la unidad no se mueve el proximo turno
-            #         objetivo.congelada = True
-            #         objetivo.recibir_dano(torre.dano)
-            #         torre.activar_habilidad()
-            #         self._log(f"Torre Magica ({torre.fila},{torre.columna}): Congelando {objetivo.tipo}")
-            #     else:
-            #         objetivo.recibir_dano(torre.dano)
-            #         torre.activar_habilidad()
-            # else:
-            #     objetivo.recibir_dano(torre.dano)
-            # ------------------------------------------------------------
-
-            objetivo.recibir_dano(torre.dano)
-            self._log(f"Torre {torre.tipo}: -{torre.dano} a {objetivo.tipo} (vida {objetivo.vida})")
+            if torre.puede_usar_habilidad() and torre.tipo != "Basica":
+                torre.activar_habilidad(objetivo)
+                if torre.tipo == "Pesada":
+                    self._log(f"Torre Pesada ({torre.fila},{torre.columna}): Disparo doble x{torre.dano*2} a {objetivo.tipo}")
+                elif torre.tipo == "Magica":
+                    self._log(f"Torre Magica ({torre.fila},{torre.columna}): Congela a {objetivo.tipo} (-{torre.dano})")
+            else:
+                objetivo.recibir_dano(torre.dano)
+                self._log(f"Torre {torre.tipo}: -{torre.dano} a {objetivo.tipo} (vida {objetivo.vida})")
 
             torre.pasar_turno()
 
@@ -984,24 +1113,20 @@ class VentanaTablero:
 
             dano_base = unidad.dano
 
-            # ------------------------------------------------------------
-            # NOTA: la logica de habilidades de las unidades (Soldado,
-            # Tanque, Rapida) ya esta definida en la clase Unidad
-            # (ver puede_usar_habilidad / activar_habilidad), pero todavia
-            # NO se ejecuta aqui. Se deja preparada para conectarla mas
-            # adelante; por ahora el dano siempre es el dano base sin
-            # multiplicadores ni efectos especiales.
-            # ------------------------------------------------------------
-            # multiplicador = 1
-            # if unidad.tipo == "Soldado" and unidad.puede_usar_habilidad():
-            #     multiplicador = 2
-            #     unidad.activar_habilidad()
-            #     self._log(f"Soldado: Ataque doble activado!")
-            #
-            # if unidad.tipo == "Tanque" and unidad.puede_usar_habilidad():
-            #     if unidad.vida < unidad.vida_max * 0.5:
-            #         unidad.activar_habilidad()  # esto pone escudo_activo = True
-            #         self._log(f"Tanque: Escudo activado!")
+            # Se activan las habilidades de las unidades segun su tipo
+            if unidad.tipo == "Soldado" and unidad.puede_usar_habilidad():
+                # Ataque doble: hace el doble de dano este turno
+                dano_base = unidad.dano * 2
+                unidad.activar_habilidad()
+                self._log(f"Soldado: Ataque doble activado! ({dano_base} dano)")
+
+            elif unidad.tipo == "Tanque" and unidad.puede_usar_habilidad():
+                # Escudo: se activa cuando le queda menos de la mitad de vida
+                if unidad.vida < unidad.vida_max * 0.5:
+                    unidad.activar_habilidad()
+                    self._log(f"Tanque: Escudo activado!")
+
+            # La Rapida usa su esquivo en recibir_dano, no al atacar
 
             dano_total = dano_base
 
@@ -1186,150 +1311,6 @@ class VentanaTablero:
             if unidad.fila == fila and unidad.columna == columna:
                 return unidad
         return None
-# =============================================================
-# Tropas/Unidades enemigas
-# =============================================================
-class Unidad:
-    TIPOS_UNIDAD ={
-    "Soldado":{
-        "costo": 30,
-        "vida": 80,
-        "dano": 10,
-        "velocidad":1,
-        "habilidad": "Ataque doble",
-        "turnos_habilidad": 3   
-        },
-    "Tanque":{
-        "costo": 100,
-        "vida": 300,
-        "dano": 20,
-        "velocidad":1,
-        "habilidad": "Escudo temporal",
-        "turnos_habilidad": 2   
-        },
-    "Rapida":{
-        "costo": 70,
-        "vida": 70,
-        "dano": 30,
-        "velocidad": 2,
-        "habilidad": "Esquivo",  # esquiva el proximo ataque que reciba
-        "turnos_habilidad": 3
-        },
-    }
-    def __init__(self, tipo, fila, columna):
-        if tipo not in self.TIPOS_UNIDAD:
-            raise ValueError(f"Tipo de unidad desconocido: {tipo}")
-        
-        datos = self.TIPOS_UNIDAD[tipo]
-        self.tipo = tipo
-        self.fila = fila
-        self.columna = columna
-
-        self.vida = datos["vida"]
-        self.vida_max = datos["vida"]
-        self.dano = datos["dano"]
-        self.velocidad = datos["velocidad"]
-        self.habilidad = datos["habilidad"]
-        self.turnos_habilidad = datos["turnos_habilidad"]
-        self.turnos_restantes = 0  # cuenta regresiva para la habilidad
-
-        # Estados especiales de habilidad
-        self.escudo_activo = False  # usado por el Tanque
-        self.esquivo = False        # usado por la Rapida
-        self.congelada = False      # puesto por la Torre Magica
-
-        # Guarda el ultimo golpe recibido para mostrarlo en pantalla como
-        # "vida_antes-dano" durante el turno en que ocurrio. Solo se llena
-        # cuando el dano realmente se aplica (no si lo absorbe un escudo
-        # o lo evita un esquivo).
-        self.ultimo_dano = None
-
-    # ----------------------------------------------------------
-    # Funciones de vida
-    # ----------------------------------------------------------
-
-    def esta_viva(self):
-        # Se devuelve True si la unidad todavia tiene vida
-        return self.vida > 0
-
-    def recibir_dano(self, cantidad):
-        # Si el escudo esta activo, absorbe el dano y se desactiva
-        if self.escudo_activo:
-            self.escudo_activo = False
-            return
-        # Si el esquivo esta activo, el ataque falla y se desactiva
-        if self.esquivo:
-            self.esquivo = False
-            return
-        # Se guarda la vida antes del golpe para el indicador visual
-        self.ultimo_dano = (self.vida, cantidad)
-        self.vida = self.vida - cantidad
-        if self.vida < 0:
-            self.vida = 0
-
-    def mover(self, nueva_fila, nueva_columna=None):
-        # Se actualiza la posicion de la unidad en el mapa.
-        # Con el pathfinding (BFS), la unidad puede desplazarse tanto en
-        # fila como en columna para rodear obstaculos, por eso este metodo
-        # acepta tambien una nueva columna (opcional, por compatibilidad).
-        self.fila = nueva_fila
-        if nueva_columna is not None:
-            self.columna = nueva_columna
-
-    # ----------------------------------------------------------
-    # Funciones de habilidad
-    # ----------------------------------------------------------
-
-    def puede_usar_habilidad(self):
-        # La habilidad esta lista cuando el contador llega a 0
-        return self.turnos_restantes <= 0
-
-    def activar_habilidad(self):
-        # Punto de entrada general para activar la habilidad de la unidad.
-        # Reparte el trabajo al metodo especifico segun el tipo de unidad.
-        # IMPORTANTE: este metodo todavia NO es llamado desde la fase de
-        # combate (ver _unidades_atacan en VentanaTablero); solo queda
-        # preparada la logica para conectarla mas adelante.
-        if not self.puede_usar_habilidad():
-            return False
-
-        if self.tipo == "Soldado":
-            self._habilidad_ataque_doble()
-        elif self.tipo == "Tanque":
-            self._habilidad_escudo()
-        elif self.tipo == "Rapida":
-            self._habilidad_esquivo()
-
-        self.turnos_restantes = self.turnos_habilidad  # se reinicia el cooldown
-        return True
-
-    def _habilidad_ataque_doble(self):
-        # Habilidad del Soldado: el siguiente ataque hace el doble de dano.
-        # El multiplicador real se aplica en la fase de combate, al
-        # calcular el dano_total del ataque (todavia no conectado).
-        pass
-
-    def _habilidad_escudo(self):
-        # Habilidad del Tanque: activa un escudo que absorbe por
-        # completo el proximo golpe que reciba la unidad.
-        self.escudo_activo = True
-
-    def _habilidad_esquivo(self):
-        # Habilidad de la Rapida: le permite esquivar por completo
-        # el proximo ataque que reciba.
-        self.esquivo = True
-
-    def pasar_turno(self):
-        # Se llama al final de cada turno para bajar el contador de la habilidad
-        if self.turnos_restantes > 0:
-            self.turnos_restantes -= 1
-
-    def __repr__(self):
-        # Se usa para imprimir la unidad de forma legible (util para depurar)
-        return f"Unidad({self.tipo}, fila={self.fila}, col={self.columna}, vida={self.vida})"
-    
-
-
 
 # =============================================================
 # INTERFAZ PRINCIPAL
