@@ -1383,6 +1383,10 @@ class Interfaz:
                                        state="disabled", width=20)
         self.boton_iniciar.pack(pady=6)
 
+        # Boton para ver el ranking; disponible siempre, sin necesidad de login
+        tk.Button(self.root, text="Ver Top de Jugadores",
+                  command=self.abrir_top, width=20).pack(pady=(0, 8))
+
         self.root.mainloop()  # se inicia el loop principal de Tkinter
         
 
