@@ -583,12 +583,6 @@ class VentanaTablero:
         # Variable que guarda que esta seleccionado en el panel del atacante
         self.seleccion_unidad = tk.StringVar(value="Soldado")
 
-        # Marcador de rondas ganadas por cada jugador
-        # El primero en ganar 3 rondas gana la partida
-        self.rondas_defensor = 0
-        self.rondas_atacante = 0
-        self.ronda_actual    = 1
-
         # Contador de turnos de combate
         self.turno_combate = 0
 
@@ -684,14 +678,6 @@ class VentanaTablero:
         self.label_vida_base = tk.Label(panel, text=f"Vida base: {self.vida_base}",
                                         font=("Arial", 9, "bold"), fg="gold")
         self.label_vida_base.pack(pady=(4, 0))
-
-        # Marcador de rondas: muestra cuantas rondas ha ganado cada jugador
-        self.label_marcador = tk.Label(
-            panel,
-            text=f"Ronda {self.ronda_actual}\nDef: {self.rondas_defensor}  Atac: {self.rondas_atacante}",
-            font=("Arial", 9, "bold"), fg="#333333", justify="center"
-        )
-        self.label_marcador.pack(pady=(6, 0))
 
         # --- panel del atacante (empieza oculto, se muestra al terminar construccion) ---
         self.panel_atacante = tk.Frame(frame_principal, bd=2, relief="groove", padx=8, pady=8)
@@ -1208,109 +1194,22 @@ class VentanaTablero:
         return None
     
     def _revisar_victoria(self):
-        ganador = None  # "defensor" o "atacante"
+        # El defensor gana si no quedan unidades vivas
+        if len(self.unidades) == 0:
+            self.boton_turno.config(state="disabled")
+            self.fase = "fin"
+            messagebox.showinfo("Fin de ronda",
+                                "¡El defensor gano! Todas las unidades fueron eliminadas.",
+                                parent=self.ventana)
+            return
 
-        # El defensor gana la ronda si todas las unidades fueron eliminadas
-        if len(self.unidades) == 0 and self.fase == "combate":
-            ganador = "defensor"
-
-        # El atacante gana la ronda si destruyo la base
+        # El atacante gana si destruye la base
         if self.vida_base <= 0:
-            ganador = "atacante"
-
-        if ganador is None:
-            return  # la ronda sigue, nadie gano todavia
-
-        # Se actualiza el marcador de rondas
-        if ganador == "defensor":
-            self.rondas_defensor += 1
-        else:
-            self.rondas_atacante += 1
-
-        self.boton_turno.config(state="disabled")
-        self.fase = "fin_ronda"
-
-        self.label_marcador.config(
-            text=f"Ronda {self.ronda_actual}\nDef: {self.rondas_defensor}  Atac: {self.rondas_atacante}"
-        )
-
-        # El primero en ganar 3 rondas gana la partida completa
-        if self.rondas_defensor == 3 or self.rondas_atacante == 3:
-            self._fin_de_partida(ganador)
-        else:
-            # Todavia no hay ganador de la partida, se ofrece nueva ronda
-            nombre_ganador = self.jugador_defensor if ganador == "defensor" else self.jugador_atacante
-            continuar = messagebox.askyesno(
-                "Fin de ronda",
-                f"¡Gano {nombre_ganador}!\n\n"
-                f"Marcador — Defensor: {self.rondas_defensor}  Atacante: {self.rondas_atacante}\n\n"
-                "¿Jugar la siguiente ronda?",
-                parent=self.ventana
-            )
-            if continuar:
-                self._nueva_ronda()
-
-    def _nueva_ronda(self):
-        # Se reinicia el estado del tablero para jugar otra ronda.
-        # El marcador de rondas se conserva; solo se limpia el mapa.
-        self.ronda_actual += 1
-        self.mapa          = self._crear_mapa()
-        self.torres        = []
-        self.muros         = []
-        self.unidades      = []
-        self.vida_base     = 200
-        self._ultimo_dano_base = None
-        self.dinero          = self.DINERO_INICIAL
-        self.dinero_atacante = self.DINERO_INICIAL
-        self.turno_combate   = 0
-        self.fase            = "construccion"
-
-        # Se reinician los labels del panel
-        self.label_dinero.config(text=f"Dinero: ${self.dinero}")
-        self.label_vida_base.config(text=f"Vida base: {self.vida_base}")
-        self.label_fase.config(text="Fase: Construccion", fg="#444444")
-        self.label_marcador.config(
-            text=f"Ronda {self.ronda_actual}\nDef: {self.rondas_defensor}  Atac: {self.rondas_atacante}"
-        )
-        self.label_turno.config(text="Turno: 0")
-
-        # Se vuelven a habilitar los botones del defensor
-        self.boton_terminar.config(state="normal")
-        self.boton_turno.config(state="disabled")
-
-        # Se oculta el panel del atacante hasta que termine la construccion
-        self.panel_atacante.grid_remove()
-
-        self.seleccion.set("Muro")
-        self.seleccion_unidad.set("Soldado")
-
-        self.dibujar_mapa()
-
-    def _fin_de_partida(self, ganador):
-        # Se determina el jugador ganador y se actualiza su registro en el archivo
-        if ganador == "defensor":
-            nombre_ganador = self.jugador_defensor
-            rol_ganador    = "victorias_defensor"
-        else:
-            nombre_ganador = self.jugador_atacante
-            rol_ganador    = "victorias_atacante"
-
-        # Se carga el archivo, se incrementa la victoria y se guarda
-        login_temporal = VentanaLogin.__new__(VentanaLogin)
-        jugadores = login_temporal.cargar_jugadores()
-        if nombre_ganador in jugadores:
-            jugadores[nombre_ganador][rol_ganador] += 1
-            login_temporal.guardar_jugadores(jugadores)
-
-        messagebox.showinfo(
-            "Fin de partida",
-            f"¡{nombre_ganador} gano la partida!\n\n"
-            f"Defensor: {self.rondas_defensor} rondas\n"
-            f"Atacante: {self.rondas_atacante} rondas\n\n"
-            "Las victorias han sido guardadas.",
-            parent=self.ventana
-        )
-        self.ventana.destroy()
+            self.boton_turno.config(state="disabled")
+            self.fase = "fin"
+            messagebox.showinfo("Fin de ronda",
+                                "¡El atacante gano! La base fue destruida.",
+                                parent=self.ventana)
    
    
     # ----------------------------------------------------------
@@ -1412,83 +1311,6 @@ class VentanaTablero:
             if unidad.fila == fila and unidad.columna == columna:
                 return unidad
         return None
-
-# =============================================================
-# VENTANA DE TOP DE JUGADORES
-# =============================================================
-class VentanaTop:
-    # Se muestra una ventana con los 5 mejores jugadores en cada rol.
-    # Los datos se leen del archivo de jugadores y se ordenan por victorias.
-
-    def __init__(self, parent):
-        self.ventana = tk.Toplevel(parent)
-        self.ventana.title("Top de Jugadores")
-        self.ventana.resizable(False, False)
-        self.ventana.grab_set()
-
-        tk.Label(self.ventana, text="Top de Jugadores",
-                 font=("Arial", 14, "bold")).pack(pady=(12, 8))
-
-        # Se crea un frame con dos columnas: defensores y atacantes
-        frame = tk.Frame(self.ventana)
-        frame.pack(padx=20, pady=(0, 12))
-
-        # --- columna izquierda: top defensores ---
-        frame_def = tk.LabelFrame(frame, text="Top Defensores", padx=10, pady=8)
-        frame_def.grid(row=0, column=0, padx=(0, 10))
-
-        # --- columna derecha: top atacantes ---
-        frame_atac = tk.LabelFrame(frame, text="Top Atacantes", padx=10, pady=8)
-        frame_atac.grid(row=0, column=1)
-
-        # Se cargan los jugadores y se arman los rankings
-        jugadores = self._cargar_jugadores()
-        self._llenar_ranking(frame_def, jugadores, "victorias_defensor")
-        self._llenar_ranking(frame_atac, jugadores, "victorias_atacante")
-
-        tk.Button(self.ventana, text="Cerrar", width=12,
-                  command=self.ventana.destroy).pack(pady=(0, 10))
-
-    def _cargar_jugadores(self):
-        # Se reutiliza la logica de carga de VentanaLogin sin crear una ventana
-        login = VentanaLogin.__new__(VentanaLogin)
-        return login.cargar_jugadores()
-
-    def _llenar_ranking(self, frame, jugadores, clave):
-        # Se ordena la lista de jugadores por la clave dada (victorias_defensor
-        # o victorias_atacante) de mayor a menor, y se muestran los primeros 5
-        ordenados = sorted(jugadores.items(),
-                           key=lambda item: item[1][clave],
-                           reverse=True)
-        top5 = ordenados[:5]
-
-        if not top5:
-            tk.Label(frame, text="Sin datos todavia",
-                     font=("Arial", 9), fg="#777777").pack()
-            return
-
-        # Encabezados de la tabla
-        tk.Label(frame, text="#", width=3,
-                 font=("Arial", 9, "bold")).grid(row=0, column=0)
-        tk.Label(frame, text="Jugador", width=14,
-                 font=("Arial", 9, "bold")).grid(row=0, column=1)
-        tk.Label(frame, text="Victorias", width=9,
-                 font=("Arial", 9, "bold")).grid(row=0, column=2)
-
-        # Se llena una fila por cada jugador del top
-        for posicion, (usuario, datos) in enumerate(top5, start=1):
-            victorias = datos[clave]
-
-            # El primer lugar se destaca en dorado
-            color = "gold" if posicion == 1 else "black"
-
-            tk.Label(frame, text=str(posicion), width=3,
-                     font=("Arial", 9), fg=color).grid(row=posicion, column=0)
-            tk.Label(frame, text=usuario, width=14, anchor="w",
-                     font=("Arial", 9), fg=color).grid(row=posicion, column=1)
-            tk.Label(frame, text=str(victorias), width=9,
-                     font=("Arial", 9), fg=color).grid(row=posicion, column=2)
-
 
 # =============================================================
 # INTERFAZ PRINCIPAL
@@ -1635,10 +1457,6 @@ class Interfaz:
             VentanaTablero(self.root,
                            jugador_defensor=self.jugador1,
                            jugador_atacante=self.jugador2)
-
-    def abrir_top(self):
-        # Se abre la ventana del ranking de jugadores
-        VentanaTop(self.root)
 
 
 # Aqui arranca todo: al crear el objeto se abre la ventana principal
