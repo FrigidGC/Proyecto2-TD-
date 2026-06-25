@@ -339,6 +339,7 @@ class VentanaTablero:
     TORRE  = 2  # hay una torre
     BASE   = 3  # es la base central del defensor, no se puede tocar
     CAMINO = 4  # camino por donde entraran las unidades atacantes
+    UNIDAD = 5  # hay una unidad atacante
 
     # Color de pantalla que le corresponde a cada valor de casilla
     COLORES = {
@@ -347,16 +348,18 @@ class VentanaTablero:
         2: "#4169E1",   # torre = azul
         3: "gold",      # base = dorado
         4: "#f0e68c",   # camino = amarillo claro
+        5: "#cc0000",   # unidad = rojo
     }
 
     DINERO_INICIAL = 300  # dinero con el que arranca el defensor al inicio de cada ronda
 
-    def __init__(self, parent, jugador_defensor):
+    def __init__(self, parent, jugador_defensor, jugador_atacante):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Tablero de juego")
         self.ventana.resizable(False, False)
 
         self.jugador_defensor = jugador_defensor  # nombre del jugador defensor
+        self.jugador_atacante = jugador_atacante  # nombre del jugador atacante
 
         # Se crea la matriz del mapa (15x15) con todas las casillas vacias,
         # excepto la base que ya se coloca en su posicion fija
@@ -368,16 +371,23 @@ class VentanaTablero:
         # Lista donde se van guardando los objetos Muro que se colocan
         self.muros = []
 
-        # Fase actual: "construccion" (defensor) o "ataque" (atacante)
-        # Por ahora solo existe la fase de construccion
+        # Lista donde se van guardando los objetos Unidad que coloca el atacante
+        self.unidades = []
+
+        # Fase actual del turno
         self.fase = "construccion"
 
-        # Dinero actual del defensor, empieza con el valor inicial
+        # Dinero del defensor
         self.dinero = self.DINERO_INICIAL
 
-        # Variable que guarda que esta seleccionado en el panel:
-        # "Muro", "Basica", "Pesada" o "Magica"
+        # Dinero del atacante (mismo monto inicial)
+        self.dinero_atacante = self.DINERO_INICIAL
+
+        # Variable que guarda que esta seleccionado en el panel del defensor
         self.seleccion = tk.StringVar(value="Muro")
+
+        # Variable que guarda que esta seleccionado en el panel del atacante
+        self.seleccion_unidad = tk.StringVar(value="Soldado")
 
         self._construir_ventana()
         self.dibujar_mapa()  # se dibuja el mapa vacio al abrir la ventana
@@ -467,84 +477,174 @@ class VentanaTablero:
                                    font=("Arial", 8), fg="#444444")
         self.label_fase.pack(pady=(6, 0))
 
+        # --- panel del atacante (empieza oculto, se muestra al terminar construccion) ---
+        self.panel_atacante = tk.Frame(frame_principal, bd=2, relief="groove", padx=8, pady=8)
+        # No se agrega al grid todavia; se muestra cuando sea el turno del atacante
+
+        tk.Label(self.panel_atacante, text=f"Atacante:\n{self.jugador_atacante}",
+                 font=("Arial", 10, "bold"), fg="#cc0000", justify="center").pack(pady=(0, 8))
+
+        self.label_dinero_atacante = tk.Label(self.panel_atacante,
+                                              text=f"Dinero: ${self.dinero_atacante}",
+                                              font=("Arial", 11), fg="green")
+        self.label_dinero_atacante.pack(pady=(0, 10))
+
+        tk.Label(self.panel_atacante, text="Desplegar unidad:",
+                 font=("Arial", 9, "bold")).pack(anchor="w")
+
+        # Opciones de unidad: (valor interno, texto con precio)
+        opciones_unidad = [
+            ("Soldado", "Soldado  $30"),
+            ("Tanque",  "Tanque   $100"),
+            ("Rapida",  "Rapida   $70"),
+        ]
+
+        for valor, texto in opciones_unidad:
+            tk.Radiobutton(
+                self.panel_atacante, text=texto, variable=self.seleccion_unidad,
+                value=valor, anchor="w", font=("Arial", 9)
+            ).pack(fill="x", pady=1)
+
+        tk.Label(self.panel_atacante,
+                 text="\nHaz click en la\nfila superior\npara desplegar",
+                 font=("Arial", 8), fg="#777777", justify="center").pack(pady=(10, 0))
+
+        tk.Label(self.panel_atacante, text="").pack()
+
+        # Boton para que el atacante termine su fase
+        self.boton_terminar_ataque = tk.Button(
+            self.panel_atacante, text="Terminar\ndespliegue",
+            font=("Arial", 9, "bold"), fg="white", bg="#884400",
+            width=14, command=self.terminar_despliegue
+        )
+        self.boton_terminar_ataque.pack(pady=(4, 0))
+
     # ----------------------------------------------------------
     # Interaccion con el mapa
     # ----------------------------------------------------------
 
     def al_hacer_click(self, evento):
-        # Solo se puede construir durante la fase de construccion
-        if self.fase != "construccion":
-            return
-
         # Se convierte la posicion del click (en pixeles) a fila y columna
-        # de la matriz, dividiendo entre el tamano de cada cuadrito
         columna = evento.x // self.TAMANO_CASILLA
         fila    = evento.y // self.TAMANO_CASILLA
 
-        # Se ignora si el click cae fuera de los limites de la cuadricula
+        # Se ignora si el click cae fuera de los limites
         if fila >= self.TAMANO_MAPA or columna >= self.TAMANO_MAPA:
             return
 
-        # Solo se puede construir en casillas vacias
-        if self.mapa[fila][columna] != self.VACIA:
-            return
+        # --- fase de construccion: el defensor coloca muros y torres ---
+        if self.fase == "construccion":
+            if self.mapa[fila][columna] != self.VACIA:
+                return
 
-        construccion = self.seleccion.get()  # que eligio el jugador en el panel
+            construccion = self.seleccion.get()
 
-        if construccion == "Muro":
-            if self.dinero < Muro.COSTO:
+            if construccion == "Muro":
+                if self.dinero < Muro.COSTO:
+                    messagebox.showwarning("Sin dinero",
+                                           "No tienes dinero suficiente para un muro.",
+                                           parent=self.ventana)
+                    return
+                nuevo_muro = Muro(fila, columna)
+                self.muros.append(nuevo_muro)
+                self.mapa[fila][columna] = self.MURO
+                self.dinero -= Muro.COSTO
+
+            else:
+                costo = Torre.TIPOS_TORRE[construccion]["costo"]
+                if self.dinero < costo:
+                    messagebox.showwarning("Sin dinero",
+                                           "No tienes dinero suficiente para esta torre.",
+                                           parent=self.ventana)
+                    return
+                nueva_torre = Torre(construccion, fila, columna)
+                self.torres.append(nueva_torre)
+                self.mapa[fila][columna] = self.TORRE
+                self.dinero -= costo
+
+            self.label_dinero.config(text=f"Dinero: ${self.dinero}")
+            self.dibujar_mapa()
+
+        # --- fase de ataque: el atacante coloca unidades en la fila superior ---
+        elif self.fase == "ataque":
+            # Las unidades solo se pueden colocar en la primera fila del mapa
+            if fila != 0:
+                messagebox.showwarning(
+                    "Posicion invalida",
+                    "Las unidades solo se pueden colocar en la fila superior del mapa.",
+                    parent=self.ventana)
+                return
+
+            # La casilla debe estar vacia
+            if self.mapa[fila][columna] != self.VACIA:
+                return
+
+            tipo_unidad = self.seleccion_unidad.get()
+            costo = Unidad.TIPOS_UNIDAD[tipo_unidad]["costo"]
+
+            if self.dinero_atacante < costo:
                 messagebox.showwarning("Sin dinero",
-                                       "No tienes dinero suficiente para un muro.",
+                                       "No tienes dinero suficiente para esta unidad.",
                                        parent=self.ventana)
                 return
-            # Se crea el objeto Muro y se guarda en la lista
-            nuevo_muro = Muro(fila, columna)
-            self.muros.append(nuevo_muro)
-            self.mapa[fila][columna] = self.MURO
-            self.dinero -= Muro.COSTO
 
-        else:
-            # Se obtiene el costo de la torre elegida desde su propio diccionario
-            costo = Torre.TIPOS_TORRE[construccion]["costo"]
-            if self.dinero < costo:
-                messagebox.showwarning("Sin dinero",
-                                       "No tienes dinero suficiente para esta torre.",
-                                       parent=self.ventana)
-                return
-            # Se crea el objeto Torre y se agrega a la lista de torres activas
-            nueva_torre = Torre(construccion, fila, columna)
-            self.torres.append(nueva_torre)
-            self.mapa[fila][columna] = self.TORRE
-            self.dinero -= costo
+            # Se crea la unidad y se coloca en el mapa
+            nueva_unidad = Unidad(tipo_unidad, fila, columna)
+            self.unidades.append(nueva_unidad)
+            self.mapa[fila][columna] = self.UNIDAD
+            self.dinero_atacante -= costo
 
-        # Se actualiza el label del dinero y se redibuja el mapa con el cambio
-        self.label_dinero.config(text=f"Dinero: ${self.dinero}")
-        self.dibujar_mapa()
+            self.label_dinero_atacante.config(text=f"Dinero: ${self.dinero_atacante}")
+            self.dibujar_mapa()
 
     def terminar_construccion(self):
         # Se le pide confirmacion al defensor antes de ceder el turno
         confirmar = messagebox.askyesno(
             "Terminar construccion",
             f"Torres colocadas: {len(self.torres)}\n"
-            f"Muros colocados: {len(self.muros)}\n"
-            f"Dinero restante: ${self.dinero}\n\n"
+            f"Muros colocados:  {len(self.muros)}\n"
+            f"Dinero restante:  ${self.dinero}\n\n"
             "¿Terminar la fase de construccion y pasar al atacante?",
             parent=self.ventana
         )
         if not confirmar:
             return
 
-        # Se cambia la fase a ataque y se bloquea el tablero para el defensor
+        # Se cambia la fase y se bloquea el panel del defensor
         self.fase = "ataque"
         self.boton_terminar.config(state="disabled")
         self.label_fase.config(text="Fase: Ataque", fg="#cc4444")
 
-        # Se muestra un aviso para que el atacante tome el control
+        # Se muestra el panel del atacante en la columna derecha
+        self.panel_atacante.grid(row=0, column=1, sticky="n")
+
         messagebox.showinfo(
             "Turno del atacante",
-            "La fase de construccion termino.\n"
-            "Es el turno del atacante.\n\n"
-            "(La fase de ataque se implementara en el proximo avance.)",
+            f"Es el turno de {self.jugador_atacante}.\n"
+            "Haz click en la fila superior del mapa para desplegar unidades.",
+            parent=self.ventana
+        )
+
+    def terminar_despliegue(self):
+        # Se le pide confirmacion al atacante antes de pasar al combate
+        confirmar = messagebox.askyesno(
+            "Terminar despliegue",
+            f"Unidades desplegadas: {len(self.unidades)}\n"
+            f"Dinero restante: ${self.dinero_atacante}\n\n"
+            "¿Terminar el despliegue e iniciar el combate?",
+            parent=self.ventana
+        )
+        if not confirmar:
+            return
+
+        self.fase = "combate"
+        self.boton_terminar_ataque.config(state="disabled")
+
+        # Se avisa que el combate viene en el siguiente avance
+        messagebox.showinfo(
+            "Combate",
+            "El despliegue termino.\n\n"
+            "(La fase de combate se implementara en el proximo avance.)",
             parent=self.ventana
         )
 
@@ -571,22 +671,37 @@ class VentanaTablero:
                                              fill=color, outline="black")
 
                 # Si la casilla tiene una torre, se dibuja la inicial de su tipo
-                # encima del cuadrito para identificarla visualmente
                 if valor == self.TORRE:
                     torre = self._torre_en(fila, columna)
                     if torre:
                         inicial = torre.tipo[0]  # "B" = Basica, "P" = Pesada, "M" = Magica
-                        cx = x1 + self.TAMANO_CASILLA // 2  # centro horizontal del cuadrito
-                        cy = y1 + self.TAMANO_CASILLA // 2  # centro vertical del cuadrito
+                        cx = x1 + self.TAMANO_CASILLA // 2
+                        cy = y1 + self.TAMANO_CASILLA // 2
+                        self.canvas.create_text(cx, cy, text=inicial,
+                                                fill="white", font=("Arial", 10, "bold"))
+
+                # Si la casilla tiene una unidad, se dibuja la inicial de su tipo
+                if valor == self.UNIDAD:
+                    unidad = self._unidad_en(fila, columna)
+                    if unidad:
+                        inicial = unidad.tipo[0]  # "S" = Soldado, "T" = Tanque, "R" = Rapida
+                        cx = x1 + self.TAMANO_CASILLA // 2
+                        cy = y1 + self.TAMANO_CASILLA // 2
                         self.canvas.create_text(cx, cy, text=inicial,
                                                 fill="white", font=("Arial", 10, "bold"))
 
     def _torre_en(self, fila, columna):
         # Se recorre la lista de torres y se devuelve la que este en esa posicion.
-        # Se devuelve None si no hay ninguna torre ahi.
         for torre in self.torres:
             if torre.fila == fila and torre.columna == columna:
                 return torre
+        return None
+
+    def _unidad_en(self, fila, columna):
+        # Se recorre la lista de unidades y se devuelve la que este en esa posicion.
+        for unidad in self.unidades:
+            if unidad.fila == fila and unidad.columna == columna:
+                return unidad
         return None
 # =============================================================
 # Tropas/Unidades enemigas
@@ -841,8 +956,9 @@ class Interfaz:
             "¿Comenzar la partida?"
         )
         if messagebox.askyesno("Confirmar partida", resumen, parent=self.root):
-            # Se abre el tablero pasandole el nombre del defensor
-            VentanaTablero(self.root, jugador_defensor=self.jugador1)
+            VentanaTablero(self.root,
+                           jugador_defensor=self.jugador1,
+                           jugador_atacante=self.jugador2)
 
 
 # Aqui arranca todo: al crear el objeto se abre la ventana principal
