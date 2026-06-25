@@ -544,7 +544,10 @@ class VentanaTablero:
     }
     COLOR_GRID = "#5aaa3a"  # color de las lineas de la cuadricula (verde claro)
 
-    DINERO_INICIAL = 300  # dinero con el que arranca el defensor al inicio de cada ronda
+    DINERO_INICIAL    = 300  # dinero con el que arranca cada jugador al inicio de cada ronda
+    DINERO_POR_RONDA  = 50   # dinero extra que reciben ambos jugadores al inicio de cada ronda
+    DINERO_POR_UNIDAD = 20   # dinero que gana el defensor por cada unidad eliminada
+    DINERO_POR_DANO   = 1    # dinero que gana el atacante por cada punto de dano a torres/base
 
     def __init__(self, parent, jugador_defensor, jugador_atacante):
         self.ventana = tk.Toplevel(parent)
