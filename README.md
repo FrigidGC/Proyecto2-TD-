@@ -20,11 +20,11 @@ Las cuentas y el historial de victorias se guardan en `jugadores.txt`, en texto 
 
 ## Facciones
 
-| Facción     | Letra |
-|-------------|-------|
-| Naturaleza  | N     |
-| Futurista   | F     |
-| Medieval    | M     |
+| Facción     |
+|-------------|
+| Naturaleza  |
+| Futurista   |
+| Medieval    |
 
 Cada partida usa dos facciones distintas (no se pueden repetir entre los dos jugadores).
 
@@ -61,7 +61,3 @@ Proyecto.py       lógica completa del juego (UI + reglas)
 jugadores.txt     se genera solo, guarda usuarios y récords
 sprites/          arte por facción (opcional)
 ```
-
-## Notas
-
-Proyecto académico, sin dependencias externas más allá de la librería estándar de Python.
