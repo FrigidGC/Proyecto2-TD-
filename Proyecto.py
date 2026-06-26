@@ -3,6 +3,70 @@ from tkinter import messagebox
 
 
 # =============================================================
+# SPRITES POR FACCION
+# =============================================================
+# Carpeta donde se buscan las imagenes. Estructura esperada:
+#   sprites/<NombreFaccion>/<NombrePieza><Letra>.png
+# Ejemplo: sprites/Naturaleza/RapidaN.png
+CARPETA_SPRITES = "sprites"
+
+# Letra que se usa en el nombre de archivo segun la faccion elegida.
+# Esta letra es la "x" que se menciona en los nombres base (Rapidax, Murox, etc).
+LETRA_FACCION = {
+    "Naturaleza": "N",
+    "Futurista":  "F",
+    "Medieval":   "M",
+}
+
+# Nombre base del archivo (sin la letra de faccion) para cada pieza del juego.
+# La letra de faccion se agrega al final antes de ".png".
+# Ej: NOMBRE_BASE_SPRITE["unidad"]["Soldado"] + LETRA_FACCION["Naturaleza"] -> "NormalN"
+NOMBRE_BASE_SPRITE = {
+    "unidad": {
+        "Soldado": "Normal",
+        "Tanque":  "Tanque",
+        "Rapida":  "Rapida",
+    },
+    "torre": {
+        "Basica": "Basica",
+        "Pesada": "Pesada",
+        "Magica": "Magica",
+    },
+    "muro": "Muro",
+    "base": "Base",
+}
+
+# Color de respaldo del Muro cuando no hay sprite .png disponible.
+# Se usa el mismo color identificador de cada faccion (ver VentanaFacciones.FACCIONES)
+# para que el muro se distinga visualmente incluso sin textura.
+COLOR_MURO_POR_FACCION = {
+    "Medieval":   "#8B4513",  # cafe (piedra)
+    "Futurista":  "#00BFFF",  # azul (metal/laser)
+    "Naturaleza": "#228B22",  # verde (enredadera)
+}
+
+
+def ruta_sprite(categoria, faccion, tipo=None):
+    # Construye la ruta del archivo .png correspondiente a una pieza.
+    # "categoria" es "unidad", "torre", "muro" o "base".
+    # "tipo" es el tipo especifico (ej. "Rapida", "Magica"); no se usa
+    # para "muro" ni "base" porque esas piezas no tienen subtipos.
+    letra = LETRA_FACCION.get(faccion)
+    if letra is None:
+        return None  # faccion desconocida o todavia no elegida
+
+    if categoria in ("muro", "base"):
+        nombre_base = NOMBRE_BASE_SPRITE[categoria]
+    else:
+        nombre_base = NOMBRE_BASE_SPRITE[categoria].get(tipo)
+        if nombre_base is None:
+            return None  # tipo desconocido
+
+    nombre_archivo = f"{nombre_base}{letra}.png"
+    return f"{CARPETA_SPRITES}/{faccion}/{nombre_archivo}"
+
+
+# =============================================================
 # VENTANA DE LOGIN
 # =============================================================
 class VentanaLogin:
@@ -549,7 +613,8 @@ class VentanaTablero:
     DINERO_POR_UNIDAD = 20   # dinero que gana el defensor por cada unidad eliminada
     DINERO_POR_DANO   = 1    # dinero que gana el atacante por cada punto de dano a torres/base
 
-    def __init__(self, parent, jugador_defensor, jugador_atacante):
+    def __init__(self, parent, jugador_defensor, jugador_atacante,
+                 faccion_defensor=None, faccion_atacante=None):
         self.ventana = tk.Toplevel(parent)
         self.ventana.title("Tablero de juego")
         self.ventana.resizable(False, False)
@@ -557,6 +622,17 @@ class VentanaTablero:
         self._ultimo_dano_base = None  # indicador "vida_antes-dano" de la base
         self.jugador_defensor = jugador_defensor  # nombre del jugador defensor
         self.jugador_atacante = jugador_atacante  # nombre del jugador atacante
+
+        # Faccion de cada jugador. El defensor determina el sprite de
+        # torres, muros y la base/meta. El atacante determina el sprite
+        # de las unidades que despliega (Soldado/Tanque/Rapida).
+        self.faccion_defensor = faccion_defensor
+        self.faccion_atacante = faccion_atacante
+
+        # Cache de imagenes ya cargadas (PhotoImage), para no leer el
+        # mismo archivo .png del disco mas de una vez. La clave es la
+        # ruta del archivo y el valor es el objeto PhotoImage.
+        self._cache_sprites = {}
 
         # Se crea la matriz del mapa (15x15) con todas las casillas vacias,
         # excepto la base que ya se coloca en su posicion fija
@@ -1360,6 +1436,50 @@ class VentanaTablero:
    
    
     # ----------------------------------------------------------
+    # Carga de sprites (.png) por faccion
+    # ----------------------------------------------------------
+
+    def _obtener_sprite(self, categoria, faccion, tipo=None):
+        # Devuelve el PhotoImage correspondiente a una pieza, o None si
+        # el archivo no existe todavia (por ejemplo mientras se estan
+        # preparando los .png). Se usa una cache para no volver a leer
+        # del disco la misma imagen en cada redibujado del mapa.
+        ruta = ruta_sprite(categoria, faccion, tipo)
+        if ruta is None:
+            return None
+
+        if ruta in self._cache_sprites:
+            return self._cache_sprites[ruta]
+
+        try:
+            imagen = tk.PhotoImage(file=ruta)
+        except tk.TclError:
+            # El archivo no existe o no es un .png valido todavia.
+            # Se guarda None en la cache para no intentar leerlo de
+            # nuevo en cada redibujado (mejora el rendimiento).
+            imagen = None
+
+        self._cache_sprites[ruta] = imagen
+        return imagen
+
+    def _dibujar_sprite_o_color(self, categoria, faccion, tipo, color, cx, cy):
+        # Dibuja el sprite .png de la pieza si existe; si no existe
+        # (todavia no se coloco el archivo, o la faccion no se eligio),
+        # se dibuja un circulo de respaldo con el color de siempre para
+        # que el juego siga siendo jugable mientras se ajustan los sprites.
+        sprite = self._obtener_sprite(categoria, faccion, tipo)
+        if sprite is not None:
+            self.canvas.create_image(cx, cy, image=sprite)
+            return True
+
+        # Respaldo: circulo de color (mismo comportamiento que antes de
+        # tener sprites, para no dejar la casilla en blanco)
+        radio = self.TAMANO_CASILLA // 2 - 4
+        self.canvas.create_oval(cx - radio, cy - radio, cx + radio, cy + radio,
+                                fill=color, outline="")
+        return False
+
+    # ----------------------------------------------------------
     # Dibujo del mapa
     # ----------------------------------------------------------
 
@@ -1377,42 +1497,61 @@ class VentanaTablero:
                 x2 = x1 + self.TAMANO_CASILLA
                 y2 = y1 + self.TAMANO_CASILLA
 
-                # Se dibuja el rectangulo con el color correspondiente
+                # Se dibuja el fondo de la casilla (cesped/camino) siempre.
+                # El sprite de la pieza (si existe) se dibuja encima.
+                fondo = color if valor in (self.VACIA, self.CAMINO) else self.COLORES[self.VACIA]
                 self.canvas.create_rectangle(x1, y1, x2, y2,
-                                             fill=color, outline=self.COLOR_GRID)
+                                             fill=fondo, outline=self.COLOR_GRID)
 
                 cx = x1 + self.TAMANO_CASILLA // 2
                 cy = y1 + self.TAMANO_CASILLA // 2
 
-                # Si la casilla tiene una torre, se dibuja la inicial de su
-                # tipo y, debajo, su indicador de vida
+                # Si la casilla tiene una torre, se dibuja su sprite (segun la
+                # faccion del defensor) y, encima, su indicador de vida
                 if valor == self.TORRE:
                     torre = self._torre_en(fila, columna)
                     if torre:
-                        inicial = torre.tipo[0]  # "B" = Basica, "P" = Pesada, "M" = Magica
-                        self.canvas.create_text(cx, cy - 7, text=inicial,
-                                                fill="white", font=("Arial", 10, "bold"))
+                        hay_sprite = self._dibujar_sprite_o_color(
+                            "torre", self.faccion_defensor, torre.tipo, color, cx, cy)
+                        if not hay_sprite:
+                            # Sin sprite todavia: se muestra la inicial como antes
+                            # "B" = Basica, "P" = Pesada, "M" = Magica
+                            self.canvas.create_text(cx, cy - 7, text=torre.tipo[0],
+                                                    fill="white", font=("Arial", 10, "bold"))
                         self._dibujar_indicador_vida(torre, cx, cy + 9)
 
-                # Si la casilla tiene un muro, se dibuja su indicador de vida
+                # Si la casilla tiene un muro, se dibuja su sprite (segun la
+                # faccion del defensor) y su indicador de vida. Si todavia
+                # no hay sprite, el color de respaldo tambien depende de la
+                # faccion (no se queda en el color cafe generico de antes).
                 elif valor == self.MURO:
                     muro = self._muro_en(fila, columna)
                     if muro:
+                        color_muro = COLOR_MURO_POR_FACCION.get(self.faccion_defensor, color)
+                        self._dibujar_sprite_o_color(
+                            "muro", self.faccion_defensor, None, color_muro, cx, cy)
                         self._dibujar_indicador_vida(muro, cx, cy)
 
-                # Si la casilla tiene una unidad, se dibuja la inicial de su
-                # tipo y, debajo, su indicador de vida
+                # Si la casilla tiene una unidad, se dibuja su sprite (segun la
+                # faccion del atacante) y, encima, su indicador de vida
                 elif valor == self.UNIDAD:
                     unidad = self._unidad_en(fila, columna)
                     if unidad:
-                        inicial = unidad.tipo[0]  # "S" = Soldado, "T" = Tanque, "R" = Rapida
-                        self.canvas.create_text(cx, cy - 7, text=inicial,
-                                                fill="white", font=("Arial", 10, "bold"))
+                        hay_sprite = self._dibujar_sprite_o_color(
+                            "unidad", self.faccion_atacante, unidad.tipo, color, cx, cy)
+                        if not hay_sprite:
+                            # Sin sprite todavia: se muestra la inicial como antes
+                            # "S" = Soldado, "T" = Tanque, "R" = Rapida
+                            self.canvas.create_text(cx, cy - 7, text=unidad.tipo[0],
+                                                    fill="white", font=("Arial", 10, "bold"))
                         self._dibujar_indicador_vida(unidad, cx, cy + 9)
 
-                # La base tambien muestra su indicador de vida, igual que
-                # el resto de piezas (vida_antes-dano en el turno del golpe)
+                # La base/meta se dibuja con el sprite del defensor y
+                # tambien muestra su indicador de vida (vida_antes-dano
+                # en el turno del golpe)
                 elif valor == self.BASE:
+                    self._dibujar_sprite_o_color(
+                        "base", self.faccion_defensor, None, color, cx, cy)
                     self._dibujar_indicador_vida_base(cx, cy)
 
     def _dibujar_indicador_vida(self, pieza, cx, cy):
@@ -1680,7 +1819,9 @@ class Interfaz:
         if messagebox.askyesno("Confirmar partida", resumen, parent=self.root):
             VentanaTablero(self.root,
                            jugador_defensor=self.jugador1,
-                           jugador_atacante=self.jugador2)
+                           jugador_atacante=self.jugador2,
+                           faccion_defensor=self.faccion1,
+                           faccion_atacante=self.faccion2)
 
     def abrir_top(self):
         # Se abre la ventana del ranking de jugadores
