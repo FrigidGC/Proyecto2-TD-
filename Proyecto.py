@@ -609,9 +609,9 @@ class VentanaTablero:
     COLOR_GRID = "#5aaa3a"  # color de las lineas de la cuadricula (verde claro)
 
     DINERO_INICIAL    = 300  # dinero con el que arranca cada jugador al inicio de cada ronda
-    DINERO_POR_RONDA  = 50   # dinero extra que reciben ambos jugadores al inicio de cada ronda
-    DINERO_POR_UNIDAD = 20   # dinero que gana el defensor por cada unidad eliminada
-    DINERO_POR_DANO   = 1    # dinero que gana el atacante por cada punto de dano a torres/base
+    DINERO_POR_RONDA  = 25   # bono modesto al inicio de cada ronda (antes: 50)
+    DINERO_POR_UNIDAD = 15   # el defensor gana esto por unidad eliminada (antes: 20)
+    DINERO_POR_DANO   = 1    # base para el bono del atacante por dano hecho
 
     def __init__(self, parent, jugador_defensor, jugador_atacante,
                  faccion_defensor=None, faccion_atacante=None):
@@ -710,8 +710,9 @@ class VentanaTablero:
                                 width=tamano_canvas, height=tamano_canvas)
         self.canvas.grid(row=0, column=0, padx=(0, 8))
 
-        # Se conecta el evento de click izquierdo con la funcion al_hacer_click
+        # Se conecta el evento de click izquierdo (colocar) y derecho (quitar)
         self.canvas.bind("<Button-1>", self.al_hacer_click)
+        self.canvas.bind("<Button-3>", self.al_quitar_estructura)
 
         # --- columna derecha: panel de construccion ---
         panel = tk.Frame(frame_principal, bd=2, relief="groove", padx=8, pady=8)
@@ -745,7 +746,7 @@ class VentanaTablero:
             ).pack(fill="x", pady=1)
 
         # Instruccion breve para el usuario
-        tk.Label(panel, text="\nHaz click en una\ncasilla gris\npara construir",
+        tk.Label(panel, text="\nClick izq: construir\nClick der: demoler\n(devuelve el dinero)",
                  font=("Arial", 8), fg="#777777", justify="center").pack(pady=(10, 0))
 
         tk.Label(panel, text="").pack()  # espacio visual
@@ -805,7 +806,7 @@ class VentanaTablero:
             ).pack(fill="x", pady=1)
 
         tk.Label(self.panel_atacante,
-                 text="\nHaz click en la\nfila superior\npara desplegar",
+                 text="\nClick izq: desplegar\nClick der: retirar\n(devuelve el dinero)",
                  font=("Arial", 8), fg="#777777", justify="center").pack(pady=(10, 0))
 
         tk.Label(self.panel_atacante, text="").pack()
@@ -883,14 +884,15 @@ class VentanaTablero:
             self.label_dinero.config(text=f"Dinero: ${self.dinero}")
             self.dibujar_mapa()
 
-        # --- fase de ataque: el atacante coloca unidades en la fila superior ---
-        elif self.fase == "ataque":
-            # Las unidades solo se pueden colocar en la primera fila del mapa
+        # --- fase de ataque O refuerzo durante combate: el atacante coloca unidades ---
+        elif self.fase in ("ataque", "combate"):
+            # Solo se permite colocar unidades en la fila superior
             if fila != 0:
-                messagebox.showwarning(
-                    "Posicion invalida",
-                    "Las unidades solo se pueden colocar en la fila superior del mapa.",
-                    parent=self.ventana)
+                if self.fase == "ataque":
+                    messagebox.showwarning(
+                        "Posicion invalida",
+                        "Las unidades solo se pueden colocar en la fila superior del mapa.",
+                        parent=self.ventana)
                 return
 
             # La casilla debe estar vacia
@@ -906,7 +908,6 @@ class VentanaTablero:
                                        parent=self.ventana)
                 return
 
-            # Se crea la unidad y se coloca en el mapa
             nueva_unidad = Unidad(tipo_unidad, fila, columna)
             self.unidades.append(nueva_unidad)
             self.mapa[fila][columna] = self.UNIDAD
@@ -914,6 +915,49 @@ class VentanaTablero:
 
             self.label_dinero_atacante.config(text=f"Dinero: ${self.dinero_atacante}")
             self.dibujar_mapa()
+
+    def al_quitar_estructura(self, evento):
+        # Click derecho: quita lo que hay en esa casilla y devuelve el dinero
+        columna = evento.x // self.TAMANO_CASILLA
+        fila    = evento.y // self.TAMANO_CASILLA
+
+        if fila >= self.TAMANO_MAPA or columna >= self.TAMANO_MAPA:
+            return
+
+        contenido = self.mapa[fila][columna]
+
+        # --- en fase de construccion: el defensor puede quitar muros y torres ---
+        if self.fase == "construccion":
+            if contenido == self.MURO:
+                # Se busca el muro en la lista, se devuelve el dinero y se elimina
+                muro = self._muro_en(fila, columna)
+                if muro:
+                    self.muros.remove(muro)
+                    self.mapa[fila][columna] = self.VACIA
+                    self.dinero += Muro.COSTO
+                    self.label_dinero.config(text=f"Dinero: ${self.dinero}")
+                    self.dibujar_mapa()
+
+            elif contenido == self.TORRE:
+                # Se busca la torre, se devuelve su costo y se elimina
+                torre = self._torre_en(fila, columna)
+                if torre:
+                    self.torres.remove(torre)
+                    self.mapa[fila][columna] = self.VACIA
+                    self.dinero += torre.costo
+                    self.label_dinero.config(text=f"Dinero: ${self.dinero}")
+                    self.dibujar_mapa()
+
+        # --- en fase de ataque o refuerzo: el atacante puede retirar unidades de fila 0 ---
+        elif self.fase in ("ataque", "combate"):
+            if contenido == self.UNIDAD:
+                unidad = self._unidad_en(fila, columna)
+                if unidad and unidad.fila == 0:  # solo si todavia esta en la fila de entrada
+                    self.unidades.remove(unidad)
+                    self.mapa[fila][columna] = self.VACIA
+                    self.dinero_atacante += unidad.costo
+                    self.label_dinero_atacante.config(text=f"Dinero: ${self.dinero_atacante}")
+                    self.dibujar_mapa()
 
     def terminar_construccion(self):
         # Se le pide confirmacion al defensor antes de ceder el turno
@@ -956,6 +1000,30 @@ class VentanaTablero:
         # fuerza el inicio del combate aunque no haya desplegado nada)
         costo_minimo = min(Unidad.TIPOS_UNIDAD[t]["costo"] for t in Unidad.TIPOS_UNIDAD)
         sin_dinero_suficiente = self.dinero_atacante < costo_minimo
+
+        # Si no tiene dinero ni unidades, el defensor gana la ronda automaticamente
+        if len(self.unidades) == 0 and sin_dinero_suficiente:
+            messagebox.showinfo(
+                "Defensor gana la ronda",
+                f"{self.jugador_atacante} no tiene dinero ni unidades.\n"
+                f"¡{self.jugador_defensor} gana esta ronda!",
+                parent=self.ventana
+            )
+            self.dano_atacante_ronda = 0
+            self.rondas_defensor += 1
+            self.label_marcador.config(
+                text=f"Ronda {self.ronda_actual}\nDef: {self.rondas_defensor}  Atac: {self.rondas_atacante}"
+            )
+            self.boton_terminar_ataque.config(state="disabled")
+            if self.rondas_defensor == 3:
+                self._fin_de_partida("defensor")
+            else:
+                continuar = messagebox.askyesno(
+                    "Siguiente ronda", "¿Jugar la siguiente ronda?",
+                    parent=self.ventana)
+                if continuar:
+                    self._nueva_ronda()
+            return
 
         if len(self.unidades) == 0 and not sin_dinero_suficiente:
             messagebox.showwarning(
@@ -1315,20 +1383,39 @@ class VentanaTablero:
         return None
     
     def _revisar_victoria(self):
-        ganador = None  # "defensor" o "atacante"
-
-        # El defensor gana la ronda si todas las unidades fueron eliminadas
-        if len(self.unidades) == 0 and self.fase == "combate":
-            ganador = "defensor"
-
-        # El atacante gana la ronda si destruyo la base
+        # El atacante gana si destruyo la base (tiene prioridad)
         if self.vida_base <= 0:
-            ganador = "atacante"
+            self._cerrar_ronda("atacante")
+            return
 
-        if ganador is None:
-            return  # la ronda sigue, nadie gano todavia
+        # Si no quedan unidades vivas, se revisa si el atacante puede reforzar
+        if len(self.unidades) == 0 and self.fase == "combate":
+            costo_minimo = min(Unidad.TIPOS_UNIDAD[t]["costo"] for t in Unidad.TIPOS_UNIDAD)
 
-        # Se actualiza el marcador de rondas
+            if self.dinero_atacante >= costo_minimo:
+                # El atacante tiene dinero: se le pregunta si quiere reforzar
+                reforzar = messagebox.askyesno(
+                    "Sin unidades",
+                    f"Todas las unidades fueron eliminadas.\n"
+                    f"Dinero disponible: ${self.dinero_atacante}\n\n"
+                    f"¿{self.jugador_atacante} desea desplegar mas unidades?",
+                    parent=self.ventana
+                )
+                if reforzar:
+                    self.fase = "ataque"
+                    self.boton_turno.config(state="disabled")
+                    self.boton_terminar_ataque.config(state="normal")
+                    self._log("Refuerzo: el atacante puede desplegar mas unidades.")
+                    return
+                else:
+                    self._cerrar_ronda("defensor")
+            else:
+                # Sin dinero para ninguna unidad: defensor gana sin preguntar
+                self._log("Defensor gana: atacante sin unidades ni dinero suficiente.")
+                self._cerrar_ronda("defensor")
+
+    def _cerrar_ronda(self, ganador):
+        # Se actualiza el marcador y se decide si sigue la partida o termina
         if ganador == "defensor":
             self.rondas_defensor += 1
         else:
@@ -1341,11 +1428,9 @@ class VentanaTablero:
             text=f"Ronda {self.ronda_actual}\nDef: {self.rondas_defensor}  Atac: {self.rondas_atacante}"
         )
 
-        # El primero en ganar 3 rondas gana la partida completa
         if self.rondas_defensor == 3 or self.rondas_atacante == 3:
             self._fin_de_partida(ganador)
         else:
-            # Todavia no hay ganador de la partida, se ofrece nueva ronda
             nombre_ganador = self.jugador_defensor if ganador == "defensor" else self.jugador_atacante
             continuar = messagebox.askyesno(
                 "Fin de ronda",
@@ -1362,12 +1447,16 @@ class VentanaTablero:
         # El marcador de rondas se conserva; solo se limpia el mapa.
         self.ronda_actual += 1
 
-        # Bono de dinero por ronda para ambos jugadores
+        # El defensor siempre recibe el dinero base de la nueva ronda
         dinero_base_nuevo = self.DINERO_INICIAL + self.DINERO_POR_RONDA
 
-        # El atacante ademas recibe dinero extra segun el dano que hizo esta ronda
-        bono_atacante = (self.dano_atacante_ronda // 10) * self.DINERO_POR_DANO * 10
-        dinero_atacante_nuevo = dinero_base_nuevo + bono_atacante
+        # El atacante conserva su dinero sobrante y recibe el bono de ronda
+        # mas el extra por dano hecho (si hizo dano)
+        if self.dano_atacante_ronda > 0:
+            bono_atacante = (self.dano_atacante_ronda // 20) * 10
+        else:
+            bono_atacante = 0
+        dinero_atacante_nuevo = self.dinero_atacante + self.DINERO_POR_RONDA + bono_atacante
 
         self._log(f"Nueva ronda — Defensor recibe ${dinero_base_nuevo}, "
                   f"Atacante recibe ${dinero_atacante_nuevo} "
